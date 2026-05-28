@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #070706;
+  color: #ECE6D7;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    Inter,
+    system-ui,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  overflow: hidden;
+}
+
+/* React Flow reset — we draw our own atmosphere */
+.react-flow,
+.react-flow__renderer,
+.react-flow__pane {
+  background: transparent !important;
+}
+.react-flow__attribution {
+  display: none !important;
+}
+.react-flow__handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.react-flow__edge-path {
+  stroke: rgba(232, 228, 217, 0.14);
+}
+.react-flow__controls {
+  display: none !important;
+}
+
+/* Subtle warm vignette + cool counterpoint — barely visible */
+.nt-radial::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 70% 50% at 22% 18%,
+      rgba(216, 196, 163, 0.04),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 82% 78%,
+      rgba(142, 154, 160, 0.028),
+      transparent 60%
+    );
+}
+
+/* Quiet scrollbars */
+.nt-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.nt-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nt-scroll::-webkit-scrollbar-thumb {
+  background: rgba(232, 228, 217, 0.16);
+  border-radius: 2px;
+}
+
+/* Begin button — a quiet inhale */
+.nt-cta {
+  position: relative;
+  letter-spacing: 0.32em;
+}
+.nt-cta::before {
+  content: "";
+  position: absolute;
+  inset: -8px -22px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 228, 217, 0.12);
+  transition: border-color 600ms ease, background 600ms ease;
+}
+.nt-cta:hover::before {
+  border-color: rgba(232, 228, 217, 0.28);
+  background: rgba(232, 228, 217, 0.025);
+}
+
+/* Range — thin, monochrome */
+.nt-range {
+  height: 18px;
+  appearance: none;
+  background: transparent;
+}
+.nt-range:focus {
+  outline: none;
+}
+.nt-range::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(232, 228, 217, 0.12);
+}
+.nt-range::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+  margin-top: -4px;
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  background: #ECE6D7;
+  box-shadow: 0 0 0 4px rgba(232, 228, 217, 0.04);
+}
+.nt-range::-moz-range-track {
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(232, 228, 217, 0.12);
+}
+.nt-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 999px;
+  background: #ECE6D7;
+  box-shadow: 0 0 0 4px rgba(232, 228, 217, 0.04);
+}
+
+/* Apple-style wordmark — tight tracking, semibold display */
+.nt-wordmark {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter Tight", Inter,
+    system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.nt-mono-num {
+  font-family:
+    "SF Mono", JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* "Memory" residue — barely perceptible */
+.nt-memory {
+  color: rgba(232, 228, 217, 0.62);
+}
+
+.nt-bottom-readability {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(7, 7, 6, 0.82) 0%,
+      rgba(11, 10, 8, 0.96) 100%
+    );
+  box-shadow:
+    0 -18px 58px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(244, 239, 228, 0.055);
+}
+
+.nt-side-readability {
+  position: relative;
+  isolation: isolate;
+}
+
+.nt-side-readability::before {
+  content: "";
+  position: absolute;
+  inset: 0 -40px 0 -28px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    270deg,
+    rgba(7, 7, 6, 0.72) 0%,
+    rgba(7, 7, 6, 0.46) 62%,
+    rgba(7, 7, 6, 0) 100%
+  );
+}
+
+/* Hide ReactFlow's default node selection outline */
+.react-flow__node.selected {
+  outline: none !important;
+}
+.react-flow__node,
+.react-flow__node:focus,
+.react-flow__node:focus-visible,
+.react-flow__node *:focus,
+.react-flow__node *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
