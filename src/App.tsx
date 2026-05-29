@@ -15,6 +15,9 @@ import {
   buildLocalProjectGraph,
   type ProjectGraph,
 } from "./lib/localProjectGraph";
+import { demoNodes, demoEdges } from "./data/demoGraph";
+import { demoSignals, TOTAL_DURATION } from "./data/demoSignals";
+import { getAgentTelemetry } from "./data/demoAgents";
 import { fetchLiveAgentGraph } from "./lib/claudeLive";
 import { AGENT_ROLES, ROLE_LABELS, inferAgentRole, roleColor } from "./lib/agentRoles";
 import {
@@ -45,16 +48,21 @@ const WAITING_TIME = -0.35;
 
 type MonitorState = "idle" | "pending" | "running" | "complete";
 
-const EMPTY_PROJECT_GRAPH: ProjectGraph = {
-  id: "empty-live-waiting",
-  name: "Waiting for agent activity",
-  source: "local",
-  nodes: [],
-  edges: [],
-  signals: [],
-  totalDuration: 4,
-  fileCount: 0,
+// First-run experience: a self-contained sample replay so cloning the repo and
+// running `npm run dev` never shows a blank screen. The live poll below upgrades
+// this to a real session the moment one is detected in the workspace.
+const DEMO_PROJECT_GRAPH: ProjectGraph = {
+  id: "demo-agent-pr-replay",
+  name: "Sample agent PR replay",
+  source: "demo",
+  nodes: demoNodes,
+  edges: demoEdges,
+  signals: demoSignals,
+  totalDuration: TOTAL_DURATION,
+  fileCount: demoNodes.filter((node) => node.type === "file").length,
   skippedCount: 0,
+  isActive: false,
+  agents: getAgentTelemetry(TOTAL_DURATION),
 };
 
 function computeMaxDepth(
@@ -226,9 +234,9 @@ function projectGraphForView(
 
 export default function App() {
   const [projectGraph, setProjectGraph] =
-    useState<ProjectGraph>(EMPTY_PROJECT_GRAPH);
+    useState<ProjectGraph>(DEMO_PROJECT_GRAPH);
   const [currentTime, setCurrentTime] = useState(WAITING_TIME);
-  const [monitorState, setMonitorState] = useState<MonitorState>("idle");
+  const [monitorState, setMonitorState] = useState<MonitorState>("running");
   const [projection, setProjection] = useState<GraphProjection>("focus");
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [selectedRole, setSelectedRole] = useState<AgentRole | undefined>();
@@ -269,7 +277,9 @@ export default function App() {
         const shouldShow =
           isLiveAgentGraph(nextGraph) &&
           nextGraph.isActive &&
-          (isLiveAgentSource(projectGraph.source) || monitorState === "idle");
+          (isLiveAgentSource(projectGraph.source) ||
+            projectGraph.source === "demo" ||
+            monitorState === "idle");
         if (!shouldShow) return;
         setProjectGraph(nextGraph);
         if (!selectedSignalId) setCurrentTime(nextGraph.totalDuration);
@@ -319,7 +329,9 @@ export default function App() {
     () =>
       isLiveAgentGraph(projectGraph)
         ? getLiveAgentTelemetry(projectGraph)
-        : [],
+        : projectGraph.source === "demo"
+          ? projectGraph.agents ?? []
+          : [],
     [projectGraph]
   );
   const effectiveSelectedAgentId =
@@ -409,8 +421,8 @@ export default function App() {
 
   const liveGraph = isLiveAgentGraph(projectGraph);
   const runSummary = useMemo(
-    () => computeRunSummary(projectGraph.signals, agents, projectGraph.nodes),
-    [agents, projectGraph.nodes, projectGraph.signals]
+    () => computeRunSummary(projectGraph.signals, agents, projectGraph.nodes, projectGraph.edges),
+    [agents, projectGraph.edges, projectGraph.nodes, projectGraph.signals]
   );
 
   const seekTo = (time: number) => {
@@ -799,9 +811,9 @@ function ReplayTransport({
         <SummaryStat label="steps" value={String(summary.steps)} />
         <SummaryStat label="files" value={String(summary.filesTouched)} />
         <SummaryStat
-          label="wasted"
-          value={formatPct(summary.wastePct)}
-          muted={summary.wastePct < 0.005}
+          label="est. waste"
+          value={formatPct(summary.wasteCostPct ?? summary.wastePct)}
+          muted={(summary.wasteCostPct ?? summary.wastePct) < 0.005}
         />
       </div>
 

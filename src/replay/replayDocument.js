@@ -29,6 +29,10 @@ function formatCost(value) {
   return "$" + Math.round(value);
 }
 
+function formatPct(value) {
+  return Math.round((value || 0) * 100) + "%";
+}
+
 function chip(label, value) {
   return (
     '<div class="nt-chip"><span class="nt-chip-v">' +
@@ -41,14 +45,37 @@ function chip(label, value) {
 
 function summaryChips(summary) {
   if (!summary) return "";
-  const pct = Math.round((summary.wastePct || 0) * 100);
+  const wastePct = summary.wasteCostPct ?? summary.wastePct ?? 0;
   return [
     chip("est. cost", formatCost(summary.estimatedCostUsd)),
     chip("tokens", formatTokens(summary.totalTokens || 0)),
     chip("steps", String(summary.steps || 0)),
     chip("files", String(summary.filesTouched || 0)),
-    chip("wasted", pct + "%"),
+    chip("est. waste", formatPct(wastePct)),
+    chip("waste cost", formatCost(summary.wastedCostEstimateUsd)),
   ].join("");
+}
+
+function summaryBreakdown(summary) {
+  const items = summary && Array.isArray(summary.wasteBreakdown)
+    ? summary.wasteBreakdown
+    : [];
+  if (!items.length) return "";
+  return (
+    '<div class="nt-waste-breakdown">' +
+    items
+      .map((item) => {
+        const bits = [
+          item.label || item.reason,
+          String(item.steps || 0) + " steps",
+          formatTokens(item.tokensEstimate || 0) + " tok",
+          formatPct(item.confidence || 0) + " conf",
+        ];
+        return '<span class="nt-waste-item">' + escapeHtml(bits.join(" / ")) + "</span>";
+      })
+      .join("") +
+    "</div>"
+  );
 }
 
 function handoffSection(handoff) {
@@ -75,6 +102,73 @@ function handoffSection(handoff) {
     "<pre>" +
     escapeHtml(handoff.promptForNextAgent || "") +
     "</pre>"
+  );
+}
+
+function fmtClock(sec) {
+  var s = Math.max(0, Math.floor(sec || 0));
+  var m = Math.floor(s / 60);
+  var r = s % 60;
+  return m + ":" + (r < 10 ? "0" + r : r);
+}
+
+// Reviewer-facing trust panel: defensible facts first, then confidence-banded
+// attention flags. Each flag deep-links (#t=<seconds>) into the replay so the
+// reviewer can jump to the moment and judge the evidence themselves.
+function trustSection(trust) {
+  if (!trust) return "";
+  var facts = (trust.facts || [])
+    .map(function (f) {
+      return (
+        '<li><span class="nt-fact-l">' +
+        escapeHtml(f.label) +
+        '</span><span class="nt-fact-v">' +
+        escapeHtml(f.value) +
+        "</span></li>"
+      );
+    })
+    .join("");
+  var flags =
+    trust.flags && trust.flags.length
+      ? trust.flags
+          .map(function (fl) {
+            var target = fl.target ? " · <code>" + escapeHtml(fl.target) + "</code>" : "";
+            var count = fl.count && fl.count > 1 ? " · " + fl.count + "×" : "";
+            return (
+              '<li><a class="nt-flag-link" href="#t=' +
+              Math.round(fl.timeSec || 0) +
+              '">jump to ' +
+              escapeHtml(fmtClock(fl.timeSec)) +
+              "</a> · " +
+              escapeHtml(fl.label) +
+              " · " +
+              Math.round((fl.confidence || 0) * 100) +
+              "%" +
+              target +
+              count +
+              "</li>"
+            );
+          })
+          .join("")
+      : '<li class="nt-flag-none">No notable detours detected.</li>';
+  var more =
+    trust.truncated && trust.truncated > 0
+      ? '<li class="nt-flag-none">…and ' + trust.truncated + " more pattern(s).</li>"
+      : "";
+  return (
+    '<div class="nt-h-summary">' +
+    escapeHtml(trust.headline || "") +
+    "</div>" +
+    '<div class="nt-h-sub">What the agent did</div><ul class="nt-facts">' +
+    facts +
+    "</ul>" +
+    '<div class="nt-h-sub">Attention flags — for human review</div><ul class="nt-flags">' +
+    flags +
+    more +
+    "</ul>" +
+    '<div class="nt-redaction">' +
+    escapeHtml(trust.disclaimer || "") +
+    "</div>"
   );
 }
 
@@ -351,8 +445,30 @@ const PLAYER_RUNTIME = `
     });
   }
 
+  // ---- trust drawer + evidence deep-links (#t=<seconds>) ----
+  var tToggle = document.getElementById('nt-trust-toggle');
+  var tPanel = document.getElementById('nt-trust');
+  if (tToggle && tPanel) {
+    tToggle.addEventListener('click', function () { tPanel.classList.toggle('open'); });
+  }
+  function seekTo(sec, pause) {
+    t = Math.max(0, Math.min(duration, sec));
+    last = null;
+    if (pause) { playing = false; updatePlay(); }
+    render(t); updateScrub();
+  }
+  function applyHash() {
+    var m = /[#&]t=(\\d+(?:\\.\\d+)?)/.exec(location.hash || '');
+    if (!m) return false;
+    seekTo(parseFloat(m[1]), true);
+    if (tPanel) tPanel.classList.add('open');
+    return true;
+  }
+  window.addEventListener('hashchange', applyHash);
+
   function start() {
     fit(); buildTicks(); updatePlay(); updateScrub();
+    applyHash();
     raf = requestAnimationFrame(frame);
   }
   window.addEventListener('resize', function () { fit(); render(t); });
@@ -371,6 +487,15 @@ export function buildReplayHtml(payload) {
   const full = Object.assign({}, payload, { exportedAt: timestamp, durationSec });
   const json = JSON.stringify(full).replace(/</g, "\\u003c");
   const title = payload.title || "NeuroTrail replay";
+  const trust = payload.trustSummary;
+  const trustToggle = trust
+    ? '<button id="nt-trust-toggle" class="nt-btn" type="button">Trust</button>'
+    : "";
+  const trustPanel = trust
+    ? '<aside id="nt-trust" class="open"><h2>NeuroTrail trust summary</h2>' +
+      trustSection(trust) +
+      "</aside>"
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -398,6 +523,8 @@ export function buildReplayHtml(payload) {
     .nt-chip { display: flex; flex-direction: column; }
     .nt-chip-v { font-size: 17px; font-variant-numeric: tabular-nums; color: #F4EFE4; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
     .nt-chip-l { margin-top: 2px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #81786C; }
+    .nt-waste-breakdown { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; max-width: min(760px, 92vw); }
+    .nt-waste-item { padding: 4px 8px; border: 1px solid rgba(236,230,215,0.1); border-radius: 999px; color: rgba(236,230,215,0.58); font-size: 10.5px; line-height: 1.2; background: rgba(236,230,215,0.035); }
     .nt-bar {
       position: fixed; left: 0; right: 0; bottom: 0; padding: 18px 24px 22px;
       display: flex; align-items: center; gap: 16px;
@@ -431,6 +558,24 @@ export function buildReplayHtml(payload) {
     #nt-handoff li { color: rgba(236,230,215,0.74); font-size: 12.5px; line-height: 1.5; }
     #nt-handoff pre { white-space: pre-wrap; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: rgba(236,230,215,0.78); font-family: "SF Mono", ui-monospace, Menlo, monospace; border: 1px solid rgba(236,230,215,0.1); padding: 14px; border-radius: 8px; background: rgba(236,230,215,0.03); }
     .nt-foot { position: fixed; right: 24px; bottom: 70px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #524e47; pointer-events: none; }
+    #nt-trust {
+      position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 88vw);
+      padding: 28px 26px 90px; overflow-y: auto;
+      background: rgba(10,10,9,0.95); border-left: 1px solid rgba(236,230,215,0.1);
+      transform: translateX(100%); transition: transform 0.32s ease;
+    }
+    #nt-trust.open { transform: translateX(0); }
+    #nt-trust h2 { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #8A867E; margin: 0 0 14px; }
+    #nt-trust .nt-h-summary { color: #F4EFE4; font-size: 15px; line-height: 1.5; }
+    #nt-trust ul { margin: 8px 0 0; padding: 0; list-style: none; }
+    #nt-trust .nt-facts li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(236,230,215,0.06); }
+    .nt-fact-l { color: #81786C; text-transform: uppercase; letter-spacing: 0.09em; font-size: 10px; align-self: center; }
+    .nt-fact-v { color: rgba(236,230,215,0.88); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+    #nt-trust .nt-flags li { padding: 8px 0; font-size: 12px; line-height: 1.55; color: rgba(236,230,215,0.76); border-bottom: 1px solid rgba(236,230,215,0.05); }
+    .nt-flag-link { color: #C9A24A; text-decoration: none; border-bottom: 1px dotted rgba(201,162,74,0.55); white-space: nowrap; }
+    .nt-flag-link:hover { color: #F4EFE4; }
+    .nt-flag-none { color: rgba(236,230,215,0.5); font-size: 12px; padding: 8px 0; }
+    #nt-trust code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 11px; color: rgba(236,230,215,0.72); }
   </style>
 </head>
 <body>
@@ -440,6 +585,7 @@ export function buildReplayHtml(payload) {
     <div class="nt-brand">NeuroTrail replay</div>
     <div class="nt-title">${escapeHtml(title)}</div>
     <div class="nt-chips">${summaryChips(payload.summary)}</div>
+    ${summaryBreakdown(payload.summary)}
   </div>
 
   <div class="nt-bar">
@@ -448,6 +594,7 @@ export function buildReplayHtml(payload) {
     <div id="nt-track"><div id="nt-ticks"></div><div id="nt-fill"></div><div id="nt-thumb"></div></div>
     <span id="nt-time">0:00 / 0:00</span>
     <button id="nt-rec" class="nt-btn" type="button">Record</button>
+    ${trustToggle}
     <button id="nt-handoff-toggle" class="nt-btn" type="button">Handoff</button>
   </div>
 
@@ -456,6 +603,8 @@ export function buildReplayHtml(payload) {
     ${redactionNotice(payload)}
     ${handoffSection(payload.handoff)}
   </aside>
+
+  ${trustPanel}
 
   <div class="nt-foot">neurotrail</div>
 

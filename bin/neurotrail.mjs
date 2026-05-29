@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildReplayHtml } from "../src/replay/replayDocument.js";
+import { classifyWasteSignals, WASTE_LABELS } from "../src/lib/wasteCore.js";
+import { renderTrustSummary } from "../src/lib/trustSummary.js";
 import {
   SUPPORTED_AGENT_IDS,
   agentColor,
@@ -19,23 +21,33 @@ const args = process.argv.slice(2);
 const command = args[0] && !args[0].startsWith("-") ? args[0] : "help";
 
 function printHelp() {
-  console.log(`NeuroTrail - AI coding session flight recorder
+  console.log(`NeuroTrail - review what your AI agent actually did
 
 Usage:
-  neurotrail watch
+  neurotrail review [--base <ref>] [--json] [--comment [pr]] [--no-redact]
   neurotrail report [--target codex|claude|cursor] [--redact]
+  neurotrail watch
   neurotrail sessions
 
 Commands:
-  watch      Start the local NeuroTrail viewer for this workspace.
+  review     Export a shareable trust report (replay HTML + review/latest.md)
+             so a human can review the agent's process, not just its diff.
+             Redacts by default.
   report     Export .neurotrail/reports/latest.html and handoff/latest.md.
+  watch      Start the local NeuroTrail viewer for this workspace.
   sessions   List recent supported local agent sessions for this workspace.
 
 Options:
-  --target <agent>  Next-agent handoff target. Default: codex.
-  --redact          Apply basic redaction to exported report and handoff.
-  --no-open         Do not auto-open the browser on watch.
-  --help            Show command help.`);
+  --base <ref>         review: git base to diff for changed files. Default: main.
+  --json               review: print machine-readable JSON instead of a summary.
+  --comment [pr]       review: post the trust summary to a PR (auto-detects the
+                       current branch's PR if omitted; requires the gh CLI).
+  --no-redact          review: do not redact the shared artifact (on by default).
+  --fail-on-flags <n>  review: exit 1 if any attention flag confidence >= n (0-1).
+  --target <agent>     report: next-agent handoff target. Default: codex.
+  --redact             report: apply basic redaction to report and handoff.
+  --no-open            watch: do not auto-open the browser.
+  --help               Show command help.`);
 }
 
 function optionValue(name, fallback) {
@@ -404,25 +416,54 @@ function parseArguments(value) {
   }
 }
 
+const TEST_COMMAND_RE =
+  /(?:^|\s|&&|\||;)(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|build|lint|typecheck|check)\b|\bvitest\b|\bjest\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+(?:test|build|check)\b|\btsc\b|\beslint\b|\bmocha\b|\bplaywright\b/i;
+
+function commandText(input) {
+  return String(input.command || input.cmd || "");
+}
+
+function isTestCommand(input) {
+  return TEST_COMMAND_RE.test(commandText(input));
+}
+
 function actionForTool(name, input) {
   const lower = name.toLowerCase();
-  const command = input.command || input.cmd || "";
+  const command = commandText(input);
   if (lower.includes("patch") || lower.includes("edit") || lower.includes("write")) {
     return "edit_file";
   }
-  if (/npm run build|npm run lint|\btest\b|\bvitest\b|\bjest\b|\bpytest\b/.test(command)) {
-    return "test_passed";
-  }
-  if (command || lower.includes("exec_command") || lower.includes("bash")) {
+  if (
+    command ||
+    lower.includes("exec") ||
+    lower.includes("bash") ||
+    lower.includes("shell") ||
+    lower.includes("terminal")
+  ) {
     return "run_command";
   }
   if (lower.includes("read") || lower.includes("sed") || lower.includes("cat")) {
     return "read_file";
   }
-  if (lower.includes("search") || lower.includes("grep") || lower.includes("rg")) {
+  if (
+    lower.includes("search") ||
+    lower.includes("grep") ||
+    lower.includes("rg") ||
+    lower.includes("glob")
+  ) {
     return "search";
   }
   return "open_symbol";
+}
+
+// A test/build command is only a verification verdict when we actually observed
+// its result. Without an observed pass/fail it stays a neutral run_command — a
+// trust tool must never assert a run was green when it did not see it.
+function refineCommandAction(action, input, outcome) {
+  if (action !== "run_command" || !isTestCommand(input)) return action;
+  if (outcome === "failed") return "test_failed";
+  if (outcome === "passed") return "test_passed";
+  return "run_command";
 }
 
 function inferRole(event) {
@@ -435,6 +476,29 @@ function inferRole(event) {
   return "research";
 }
 
+// Role derived from the already-classified action first (authoritative), so an
+// edit is never mis-bucketed as research/verification by a fuzzy text match.
+// Falls back to inferRole only for steps with no decisive action.
+function roleForEvent(event) {
+  switch (event.action) {
+    case "edit_file":
+    case "write_text":
+      return /\.(md|mdx|markdown|txt|rst)$/i.test(event.path ?? "")
+        ? "writing"
+        : "coding";
+    case "test_passed":
+    case "test_failed":
+    case "run_command":
+      return "verification";
+    case "read_file":
+    case "open_symbol":
+    case "search":
+      return "research";
+    default:
+      return inferRole(event);
+  }
+}
+
 function eventSummary(action, pathValue, toolName) {
   if (pathValue) {
     const name = path.basename(pathValue);
@@ -442,7 +506,16 @@ function eventSummary(action, pathValue, toolName) {
     if (action === "read_file" || action === "open_symbol") return `inspected ${name}`;
     if (action === "search") return `searched ${name}`;
   }
-  return toolName.replace(/^mcp__/, "").replaceAll("_", " ").slice(0, 70);
+  // No usable path: describe by action so raw harness tool names ("Bash",
+  // "write stdin") never leak into the handoff or trust summary.
+  if (action === "edit_file") return "edited a file";
+  if (action === "test_passed") return "ran tests (passed)";
+  if (action === "test_failed") return "ran tests (failed)";
+  if (action === "run_command") return "ran a command";
+  if (action === "read_file" || action === "open_symbol") return "inspected a file";
+  if (action === "search") return "searched the codebase";
+  const cleaned = toolName.replace(/^mcp__/, "").replaceAll("_", " ").trim();
+  return cleaned ? cleaned.slice(0, 70) : "agent step";
 }
 
 function textFromContent(content) {
@@ -471,8 +544,80 @@ function openAiStyleToolUses(record) {
     });
 }
 
+// Correlate each tool call with the result the agent saw afterward, so a
+// test/build command can be classified as genuinely passed or failed rather
+// than assumed green. Keyed by the provider's call/tool id.
+function buildResultIndex(records, agent) {
+  const index = new Map();
+  if (agent === "codex") {
+    for (const record of records) {
+      const payload = record.payload || {};
+      if (
+        record.type === "response_item" &&
+        payload.type === "function_call_output" &&
+        payload.call_id
+      ) {
+        let text = "";
+        let exitCode;
+        const raw = payload.output;
+        if (typeof raw === "string") {
+          try {
+            const parsed = JSON.parse(raw);
+            text = typeof parsed.output === "string" ? parsed.output : raw;
+            if (parsed?.metadata && typeof parsed.metadata.exit_code === "number") {
+              exitCode = parsed.metadata.exit_code;
+            }
+          } catch {
+            text = raw;
+          }
+        } else if (raw && typeof raw === "object") {
+          text = typeof raw.output === "string" ? raw.output : JSON.stringify(raw);
+          if (raw.metadata && typeof raw.metadata.exit_code === "number") {
+            exitCode = raw.metadata.exit_code;
+          }
+        }
+        index.set(payload.call_id, { text, exitCode });
+      }
+    }
+  } else if (agent !== "gemini") {
+    // Claude / OpenAI-style: tool_result items carry is_error + content text.
+    for (const record of records) {
+      const message = record.message || {};
+      const content = Array.isArray(message.content) ? message.content : [];
+      for (const item of content) {
+        if (item?.type !== "tool_result" || !item.tool_use_id) continue;
+        let text = "";
+        if (typeof item.content === "string") text = item.content;
+        else if (Array.isArray(item.content)) {
+          text = item.content
+            .map((c) => (typeof c?.text === "string" ? c.text : ""))
+            .join("\n");
+        }
+        index.set(item.tool_use_id, { text, isError: item.is_error === true });
+      }
+    }
+  }
+  return index;
+}
+
+const STRONG_FAILURE_RE =
+  /\b(?:tests?\s+failed|build\s+failed|compilation\s+failed|\d+\s+fail(?:ed|ing)|FAILED)\b|✗|✖|✘/;
+
+// "passed" | "failed" | undefined. Authoritative signals (exit code, is_error)
+// win; the text scan is a conservative last resort biased toward flagging
+// failures for review rather than asserting an unverified pass.
+function outcomeFromResult(entry) {
+  if (!entry) return undefined;
+  if (typeof entry.exitCode === "number") return entry.exitCode === 0 ? "passed" : "failed";
+  if (entry.isError === true) return "failed";
+  if (entry.isError === false) return "passed";
+  if (STRONG_FAILURE_RE.test(entry.text || "")) return "failed";
+  return undefined;
+}
+
 function eventsFromRecords(records, agent) {
   const events = [];
+  const resultIndex = buildResultIndex(records, agent);
   for (const record of records) {
     const timestamp = record.timestamp || new Date().toISOString();
     if (agent === "codex") {
@@ -497,7 +642,12 @@ function eventsFromRecords(records, agent) {
         const toolName = payload.namespace
           ? `${payload.namespace}.${payload.name}`
           : payload.name || "tool";
-        const action = actionForTool(toolName, input);
+        const outcome = outcomeFromResult(resultIndex.get(payload.call_id));
+        const action = refineCommandAction(
+          actionForTool(toolName, input),
+          input,
+          outcome
+        );
         const paths = pathsFromInput(input);
         const pathValue = paths[0];
         const event = {
@@ -508,7 +658,7 @@ function eventsFromRecords(records, agent) {
           summary: eventSummary(action, pathValue, toolName),
           toolName,
         };
-        events.push({ ...event, role: inferRole(event) });
+        events.push({ ...event, role: roleForEvent(event) });
       }
     } else if (agent === "gemini") {
       if (record.type === "gemini_artifact") {
@@ -548,7 +698,18 @@ function eventsFromRecords(records, agent) {
       for (const item of Array.isArray(record.toolCalls) ? record.toolCalls : []) {
         if (!item?.name) continue;
         const input = parseArguments(item.args);
-        const action = actionForTool(item.name, input);
+        const status = String(item.status ?? "").toLowerCase();
+        const outcome =
+          status === "error" || status === "failed" || item.success === false
+            ? "failed"
+            : status === "success" || status === "completed" || item.success === true
+              ? "passed"
+              : undefined;
+        const action = refineCommandAction(
+          actionForTool(item.name, input),
+          input,
+          outcome
+        );
         const paths = pathsFromInput(input);
         const pathValue = paths[0];
         const event = {
@@ -559,7 +720,7 @@ function eventsFromRecords(records, agent) {
           summary: eventSummary(action, pathValue, item.name),
           toolName: item.name,
         };
-        events.push({ ...event, role: inferRole(event) });
+        events.push({ ...event, role: roleForEvent(event) });
       }
     } else {
       const message = record.message || {};
@@ -577,7 +738,12 @@ function eventsFromRecords(records, agent) {
       for (const item of content) {
         if (item?.type !== "tool_use" || !item.name) continue;
         const input = parseArguments(item.input);
-        const action = actionForTool(item.name, input);
+        const outcome = outcomeFromResult(resultIndex.get(item.id));
+        const action = refineCommandAction(
+          actionForTool(item.name, input),
+          input,
+          outcome
+        );
         const paths = pathsFromInput(input);
         const pathValue = paths[0];
         const event = {
@@ -588,10 +754,14 @@ function eventsFromRecords(records, agent) {
           summary: eventSummary(action, pathValue, item.name),
           toolName: item.name,
         };
-        events.push({ ...event, role: inferRole(event) });
+        events.push({ ...event, role: roleForEvent(event) });
       }
       for (const item of openAiStyleToolUses(record)) {
-        const action = actionForTool(item.name, item.input);
+        const action = refineCommandAction(
+          actionForTool(item.name, item.input),
+          item.input,
+          undefined
+        );
         const paths = pathsFromInput(item.input);
         const pathValue = paths[0];
         const event = {
@@ -602,7 +772,7 @@ function eventsFromRecords(records, agent) {
           summary: eventSummary(action, pathValue, item.name),
           toolName: item.name,
         };
-        events.push({ ...event, role: inferRole(event) });
+        events.push({ ...event, role: roleForEvent(event) });
       }
     }
   }
@@ -620,6 +790,7 @@ function tokenUsageFromRecords(records, agent) {
   }
   if (agent === "gemini") {
     const total = { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 };
+    let actualCostUsd;
     for (const record of records) {
       const tokens = record.tokens;
       if (!tokens || typeof tokens !== "object") continue;
@@ -627,15 +798,24 @@ function tokenUsageFromRecords(records, agent) {
       total.cached_input_tokens += tokens.cached || 0;
       total.output_tokens += (tokens.output || 0) + (tokens.tool || 0);
       total.reasoning_output_tokens += tokens.thoughts || 0;
+      const cost = actualCostFromUsage(tokens);
+      if (cost !== undefined) actualCostUsd = (actualCostUsd || 0) + cost;
     }
     const totalTokens =
       total.input_tokens +
       total.cached_input_tokens +
       total.output_tokens +
       total.reasoning_output_tokens;
-    return totalTokens > 0 ? { ...total, total_tokens: totalTokens } : undefined;
+    return totalTokens > 0
+      ? {
+          ...total,
+          total_tokens: totalTokens,
+          ...(actualCostUsd !== undefined ? { totalCostUsd: actualCostUsd } : {}),
+        }
+      : undefined;
   }
   let total = { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 };
+  let actualCostUsd;
   for (const record of records) {
     const usage = record.message?.usage;
     if (!usage) continue;
@@ -643,13 +823,21 @@ function tokenUsageFromRecords(records, agent) {
     total.cache_creation_input_tokens += usage.cache_creation_input_tokens || 0;
     total.cache_read_input_tokens += usage.cache_read_input_tokens || 0;
     total.output_tokens += usage.output_tokens || 0;
+    const cost = actualCostFromUsage(usage) ?? actualCostFromUsage(record);
+    if (cost !== undefined) actualCostUsd = (actualCostUsd || 0) + cost;
   }
   const totalTokens =
     total.input_tokens +
     total.cache_creation_input_tokens +
     total.cache_read_input_tokens +
     total.output_tokens;
-  return totalTokens > 0 ? { ...total, total_tokens: totalTokens } : undefined;
+  return totalTokens > 0
+    ? {
+        ...total,
+        total_tokens: totalTokens,
+        ...(actualCostUsd !== undefined ? { totalCostUsd: actualCostUsd } : {}),
+      }
+    : undefined;
 }
 
 function redactText(input) {
@@ -675,6 +863,140 @@ function unique(items, limit = 10) {
     if (result.length >= limit) break;
   }
   return result;
+}
+
+function numeric(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function actualCostFromUsage(usage) {
+  for (const key of ["actualCostUsd", "totalCostUsd", "total_cost_usd", "cost_usd"]) {
+    if (typeof usage?.[key] === "number" && Number.isFinite(usage[key]) && usage[key] >= 0) {
+      return usage[key];
+    }
+  }
+  return undefined;
+}
+
+function estimateUsageCostUsd(usage = {}) {
+  const actualCostUsd = actualCostFromUsage(usage);
+  if (actualCostUsd !== undefined) return actualCostUsd;
+  const input = numeric(usage.input_tokens);
+  const cacheCreate = numeric(usage.cache_creation_input_tokens);
+  const cacheRead = numeric(usage.cache_read_input_tokens) || numeric(usage.cached_input_tokens);
+  const output = numeric(usage.output_tokens) + numeric(usage.reasoning_output_tokens);
+  return (input * 3 + cacheCreate * 3.75 + cacheRead * 0.3 + output * 15) / 1000000;
+}
+
+function nodeLabel(nodes, id) {
+  const node = nodes.find((item) => item.id === id);
+  return node?.path || node?.label || id.replace(/^(file|dir|cmd|decision|agent):/, "");
+}
+
+function computeReportSummary({ signals, nodes, edges, sessions }) {
+  const realSignals = signals
+    .filter((signal) => !signal.id.endsWith("-live-summary"))
+    .slice()
+    .sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+  const totalTokens = sessions.reduce((sum, sx) => sum + (sx.tokenUsage?.total_tokens || 0), 0);
+  const estimatedCostUsd = sessions.reduce(
+    (sum, sx) => sum + estimateUsageCostUsd(sx.tokenUsage),
+    0
+  );
+  const editedTargets = new Set();
+  for (const signal of realSignals) {
+    if (signal.action === "edit_file" || signal.action === "write_text") {
+      editedTargets.add(signal.target);
+    }
+  }
+
+  const deadTrailIds = new Set();
+  const breakdown = new Map();
+  let wastedSteps = 0;
+  let wastedTokensEstimate = 0;
+  let wastedCostEstimateUsd = 0;
+  let confidenceTotal = 0;
+
+  function addWaste(signal, reason, confidence) {
+    const tokensEstimate = realSignals.length > 0 ? totalTokens / realSignals.length : 0;
+    const costEstimateUsd =
+      totalTokens > 0 ? tokensEstimate * (estimatedCostUsd / totalTokens) : 0;
+    wastedSteps += 1;
+    wastedTokensEstimate += tokensEstimate;
+    wastedCostEstimateUsd += costEstimateUsd;
+    confidenceTotal += confidence;
+    const entry =
+      breakdown.get(reason) || {
+        steps: 0,
+        tokensEstimate: 0,
+        costEstimateUsd: 0,
+        confidenceTotal: 0,
+        targets: new Set(),
+      };
+    entry.steps += 1;
+    entry.tokensEstimate += tokensEstimate;
+    entry.costEstimateUsd += costEstimateUsd;
+    entry.confidenceTotal += confidence;
+    entry.targets.add(nodeLabel(nodes, signal.target));
+    breakdown.set(reason, entry);
+    if (reason === "dead_trail") deadTrailIds.add(signal.target);
+  }
+
+  // Shared classifier (src/lib/wasteCore.js) keeps the CLI report and the live
+  // viewer / HTML export scoring waste identically; the CLI just applies its
+  // own session-based token weighting on top of these per-signal verdicts.
+  const verdicts = classifyWasteSignals(realSignals, nodes, edges);
+  const verdictById = new Map(verdicts.map((verdict) => [verdict.signalId, verdict]));
+  for (const signal of realSignals) {
+    const verdict = verdictById.get(signal.id);
+    if (verdict?.wasted && verdict.reason) {
+      addWaste(signal, verdict.reason, verdict.confidence);
+    }
+  }
+
+  const steps = realSignals.length;
+  const wastePct = steps > 0 ? Math.min(1, wastedSteps / steps) : 0;
+  const wasteCostPct =
+    estimatedCostUsd > 0 ? Math.min(1, wastedCostEstimateUsd / estimatedCostUsd) : wastePct;
+  const wasteBreakdown = [
+    "tool_error",
+    "failed_iteration",
+    "redundant_retry",
+    "churn",
+    "loop",
+    "thrash",
+    "dead_trail",
+    "explicit_waste",
+  ]
+    .map((reason) => {
+      const entry = breakdown.get(reason);
+      if (!entry) return undefined;
+      return {
+        reason,
+        label: WASTE_LABELS[reason],
+        steps: entry.steps,
+        tokensEstimate: entry.tokensEstimate,
+        costEstimateUsd: entry.costEstimateUsd,
+        confidence: entry.confidenceTotal / entry.steps,
+        targets: [...entry.targets].slice(0, 6),
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    totalTokens,
+    estimatedCostUsd,
+    steps,
+    filesTouched: editedTargets.size,
+    wastedSteps,
+    wastePct,
+    wasteCostPct,
+    wastedTokensEstimate,
+    wastedCostEstimateUsd,
+    wasteConfidence: wastedSteps > 0 ? confidenceTotal / wastedSteps : 0,
+    wasteBreakdown,
+    deadTrails: [...deadTrailIds].slice(0, 6).map((id) => nodeLabel(nodes, id)),
+  };
 }
 
 function buildEventPayload({ events, sessions, handoff, filesTouched, inspected }) {
@@ -740,27 +1062,7 @@ function buildEventPayload({ events, sessions, handoff, filesTouched, inspected 
       weight: 1,
     });
   }
-
-  const totalTokens = sessions.reduce((sum, sx) => sum + (sx.tokenUsage?.total_tokens || 0), 0);
-  // Tiered estimate (USD/1M): cache reads are an order of magnitude cheaper than
-  // fresh input, so blending everything at one rate wildly overstates cost.
-  const tiered = sessions.reduce(
-    (acc, sx) => {
-      const u = sx.tokenUsage || {};
-      acc.input += u.input_tokens || 0;
-      acc.cacheCreate += u.cache_creation_input_tokens || 0;
-      acc.cacheRead += u.cache_read_input_tokens || u.cached_input_tokens || 0;
-      acc.output += (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
-      return acc;
-    },
-    { input: 0, cacheCreate: 0, cacheRead: 0, output: 0 }
-  );
-  const estimatedCostUsd =
-    (tiered.input * 3 + tiered.cacheCreate * 3.75 + tiered.cacheRead * 0.3 + tiered.output * 15) /
-    1000000;
-  const deadTrails = inspected.filter((f) => !filesTouched.includes(f));
-  const wasted = events.filter((e) => e.path && e.action !== "edit_file" && deadTrails.includes(e.path)).length;
-  const steps = events.length;
+  const summary = computeReportSummary({ signals, nodes, edges, sessions });
 
   return {
     version: "2",
@@ -788,15 +1090,7 @@ function buildEventPayload({ events, sessions, handoff, filesTouched, inspected 
     nodes,
     edges,
     signals,
-    summary: {
-      totalTokens,
-      estimatedCostUsd,
-      steps,
-      filesTouched: filesTouched.length,
-      wastedSteps: wasted,
-      wastePct: steps > 0 ? Math.min(1, wasted / steps) : 0,
-      deadTrails: deadTrails.slice(0, 6),
-    },
+    summary,
     handoff: {
       summary:
         "NeuroTrail captured " + events.length + " agent steps from " +
@@ -807,7 +1101,7 @@ function buildEventPayload({ events, sessions, handoff, filesTouched, inspected 
       reviewNeeded: [],
       evidence: [],
       filesTouched,
-      deadTrails: deadTrails.slice(0, 6),
+      deadTrails: summary.deadTrails,
       nextRecommendedFiles: unique([...filesTouched, ...inspected], 6),
       nextRecommendedRole: "research",
       promptForNextAgent: handoff,
@@ -862,7 +1156,97 @@ ${tokenLines.map((item) => `- ${item}`).join("\n") || "- No token usage captured
 `;
 }
 
-async function exportReport({ target = "codex", redacted = false } = {}) {
+function runGit(gitArgs) {
+  return new Promise((resolve) => {
+    let out = "";
+    let settled = false;
+    const finish = (value) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    try {
+      const child = spawn("git", gitArgs, { cwd, stdio: ["ignore", "pipe", "ignore"] });
+      child.stdout.on("data", (buf) => {
+        out += buf.toString("utf8");
+      });
+      child.on("error", () => finish(null));
+      child.on("close", (code) => finish(code === 0 ? out : null));
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+// Git-authoritative list of files changed on this branch vs. <base>. Returns
+// undefined outside a git repo, on a bad ref, or with no diff — the trust
+// summary then falls back to files inferred from the session log.
+async function gitDiffFiles(base) {
+  if (!base) return undefined;
+  const out = await runGit(["diff", "--name-only", `${base}...HEAD`]);
+  if (out == null) return undefined;
+  const files = out
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return files.length ? files : undefined;
+}
+
+function formatCostUsd(value) {
+  if (!value || value <= 0) return "$0";
+  if (value < 0.01) return "<$0.01";
+  if (value < 100) return "$" + value.toFixed(2);
+  return "$" + Math.round(value);
+}
+
+function formatClock(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r < 10 ? "0" + r : r}`;
+}
+
+async function runGhComment(pr, bodyFile) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn("gh", ["pr", "comment", String(pr), "--body-file", bodyFile], {
+        cwd,
+        stdio: "ignore",
+      });
+      child.on("error", () => resolve(false));
+      child.on("close", (code) => resolve(code === 0));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+// Detect the open PR number for the current branch via the gh CLI. Returns ""
+// when gh is missing/unauthenticated or the branch has no PR.
+async function detectPrNumber() {
+  return new Promise((resolve) => {
+    try {
+      let out = "";
+      const child = spawn("gh", ["pr", "view", "--json", "number", "-q", ".number"], {
+        cwd,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      child.stdout.on("data", (buf) => {
+        out += buf.toString("utf8");
+      });
+      child.on("error", () => resolve(""));
+      child.on("close", (code) => resolve(code === 0 ? out.trim() : ""));
+    } catch {
+      resolve("");
+    }
+  });
+}
+
+// Shared discovery/parse pipeline. `single: true` scopes to the one most-recent
+// agent (a PR is written by one agent), which also gives the trust summary
+// per-agent token isolation for free.
+async function gatherSessionsAndEvents({ single = false } = {}) {
   const candidates = await allCandidates();
   if (candidates.length === 0) {
     throw new Error("No supported local agent sessions found for this workspace.");
@@ -873,6 +1257,7 @@ async function exportReport({ target = "codex", redacted = false } = {}) {
     if (seenAgents.has(candidate.agent)) continue;
     selected.push(candidate);
     seenAgents.add(candidate.agent);
+    if (single) break;
     if (selected.length >= SUPPORTED_AGENT_IDS.length) break;
   }
   const sessions = [];
@@ -888,6 +1273,11 @@ async function exportReport({ target = "codex", redacted = false } = {}) {
     events.push(...sessionEvents);
   }
   events.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  return { sessions, events, primaryAgent: selected[0]?.agent };
+}
+
+async function exportReport({ target = "codex", redacted = false } = {}) {
+  const { sessions, events } = await gatherSessionsAndEvents();
   const rendered = renderReport({ events, sessions, target, redacted });
   const finalHtml = redacted ? redactText(rendered.html) : rendered.html;
   const finalHandoff = redacted ? redactText(rendered.handoff) : rendered.handoff;
@@ -924,6 +1314,13 @@ function openBrowser(url) {
 
 async function runWatch() {
   const port = optionValue("--port", "5173");
+  const hasVite = await exists(path.join(packageRoot, "node_modules", "vite"));
+  if (!hasVite) {
+    console.log(
+      "neurotrail watch needs the dev viewer. Clone the repo and run `npm install` first, then `npm run dev` — or use `neurotrail review` for a shareable report (no dev deps)."
+    );
+    return;
+  }
   const url = `http://localhost:${port}`;
   console.log(`Starting NeuroTrail viewer for ${cwd}`);
   console.log(`Open ${url}`);
@@ -968,6 +1365,143 @@ async function runReport() {
   console.log(`Redact:  ${redacted ? "enabled" : "disabled"}`);
 }
 
+async function runReview() {
+  const target = optionValue("--target", "codex");
+  const json = hasFlag("--json");
+  const redacted = !hasFlag("--no-redact");
+  const base = optionValue("--base", "main");
+  const wantsComment = hasFlag("--comment");
+  let commentTarget = optionValue("--comment", "");
+  const failOnRaw = optionValue("--fail-on-flags", "");
+
+  const { sessions, events, primaryAgent } = await gatherSessionsAndEvents({ single: true });
+  const filesFromGit = await gitDiffFiles(base);
+  const label = agentLabel(primaryAgent || "unknown");
+
+  const filesTouched = unique(
+    events.filter((e) => e.action === "edit_file").map((e) => e.path),
+    12
+  );
+  const inspected = unique(
+    events.filter((e) => e.action !== "edit_file").map((e) => e.path),
+    12
+  );
+  const tokenLines = sessions
+    .map((session) => {
+      const total = session.tokenUsage?.total_tokens;
+      return total ? `${session.agent}: ${total.toLocaleString()} tokens` : undefined;
+    })
+    .filter(Boolean);
+  const handoffMarkdown = renderHandoff({
+    events,
+    filesTouched,
+    inspected,
+    target,
+    tokenLines,
+    redacted,
+  });
+
+  const payload = buildEventPayload({
+    events,
+    sessions,
+    handoff: handoffMarkdown,
+    filesTouched,
+    inspected,
+  });
+  const trust = renderTrustSummary({
+    summary: payload.summary,
+    signals: payload.signals,
+    nodes: payload.nodes,
+    edges: payload.edges,
+    agentLabel: label,
+    filesFromGit,
+  });
+  payload.trustSummary = trust;
+  payload.title = `${label} session review`;
+
+  const html = buildReplayHtml(payload);
+  const finalHtml = redacted ? redactText(html) : html;
+  const reviewMarkdown = redacted ? redactText(trust.markdown) : trust.markdown;
+
+  const root = path.join(cwd, ".neurotrail");
+  const reportsDir = path.join(root, "reports");
+  const reviewDir = path.join(root, "review");
+  await fs.mkdir(reportsDir, { recursive: true });
+  await fs.mkdir(reviewDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const latestReport = path.join(reportsDir, "latest.html");
+  const stampedReport = path.join(reportsDir, `${stamp}-neurotrail-review.html`);
+  const latestReview = path.join(reviewDir, "latest.md");
+  await Promise.all([
+    fs.writeFile(latestReport, finalHtml, "utf8"),
+    fs.writeFile(stampedReport, finalHtml, "utf8"),
+    fs.writeFile(latestReview, reviewMarkdown, "utf8"),
+  ]);
+
+  const filesCount = filesFromGit?.length ?? payload.summary.filesTouched ?? 0;
+  const durationSec = payload.signals.reduce((m, s) => Math.max(m, s.time || 0), 0);
+
+  if (json) {
+    const out = {
+      agent: primaryAgent,
+      facts: redacted
+        ? trust.facts.map((f) => ({ label: f.label, value: redactText(f.value) }))
+        : trust.facts,
+      flags: trust.flags.map((f) => ({
+        reason: f.reason,
+        confidence: f.confidence,
+        timeSec: f.timeSec,
+        target: f.target,
+      })),
+      flagCount: trust.flagCount,
+      tests: trust.tests,
+      filesChanged: filesCount,
+      estimatedCostUsd: payload.summary.estimatedCostUsd,
+      artifacts: { report: latestReport, review: latestReview },
+    };
+    console.log(JSON.stringify(out, null, 2));
+  } else {
+    const testsWord =
+      trust.tests === "passed"
+        ? "tests passed"
+        : trust.tests === "failed"
+          ? "tests FAILED"
+          : "tests not observed";
+    console.log(
+      `${label} · ${filesCount} files · ${trust.flagCount} attention flag(s) · ${testsWord} · ~${formatCostUsd(payload.summary.estimatedCostUsd)} · ${formatClock(durationSec)}`
+    );
+    console.log(`Review:  ${latestReview}`);
+    console.log(`Replay:  ${latestReport}`);
+  }
+
+  if (wantsComment) {
+    if (!commentTarget) {
+      commentTarget = await detectPrNumber();
+    }
+    if (!commentTarget) {
+      if (!json) {
+        console.log(
+          "Could not detect a PR for the current branch. Pass --comment <pr>, or check the gh CLI is installed and authenticated."
+        );
+      }
+    } else {
+      const ok = await runGhComment(commentTarget, latestReview);
+      if (!json) {
+        console.log(
+          ok
+            ? `Posted trust summary to PR ${commentTarget}.`
+            : `Could not post to PR ${commentTarget} (is the gh CLI installed and authenticated?).`
+        );
+      }
+    }
+  }
+
+  const failOn = parseFloat(failOnRaw);
+  if (Number.isFinite(failOn) && trust.flags.some((f) => f.confidence >= failOn)) {
+    process.exitCode = 1;
+  }
+}
+
 try {
   if (args.includes("--help") || args.includes("-h")) {
     printHelp();
@@ -975,6 +1509,8 @@ try {
     await runWatch();
   } else if (command === "report") {
     await runReport();
+  } else if (command === "review") {
+    await runReview();
   } else if (command === "sessions") {
     await runSessions();
   } else {
