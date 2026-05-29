@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useI18n } from "../i18nContext";
 
 type MonitorState = "idle" | "pending" | "running" | "complete";
 
@@ -27,6 +28,7 @@ export function GraphControls({
   onConfirmLoad,
   onReplay,
 }: Props) {
+  const { t, formatNumber } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const show =
     monitorState === "idle" ||
@@ -67,14 +69,14 @@ export function GraphControls({
                   onClick={onWatchAgent}
                   className="nt-cta inline-block text-[10.5px] uppercase text-nt-bright hover:text-white transition-colors py-1"
                 >
-                  Watch agent
+                  {t("graphControls.watchAgent")}
                 </button>
                 <button
                   type="button"
                   onClick={() => inputRef.current?.click()}
                   className="nt-cta inline-block text-[10.5px] uppercase text-nt-mid hover:text-nt-bright transition-colors py-1"
                 >
-                  Choose folder
+                  {t("graphControls.chooseFolder")}
                 </button>
               </div>
             )}
@@ -86,17 +88,24 @@ export function GraphControls({
                   style={{ letterSpacing: "-0.01em" }}
                 >
                   {isLocalGraph
-                    ? `${graphName} · ${fileCount.toLocaleString()} files mapped`
+                    ? t("graphControls.filesMapped", {
+                        name: graphName,
+                        count: formatNumber(fileCount),
+                      })
                     : isLiveGraph
-                      ? `${graphName} · live session connected`
-                    : "Project graph ready."}
+                      ? t("graphControls.liveConnected", { name: graphName })
+                    : t("graphControls.ready")}
                 </p>
                 <button
                   type="button"
                   onClick={onConfirmLoad}
                   className="nt-cta inline-block text-[10.5px] uppercase text-nt-bright hover:text-white transition-colors py-1"
                 >
-                  {isLocalGraph ? "Begin scan" : isLiveGraph ? "Watch live" : "Begin"}
+                  {isLocalGraph
+                    ? t("graphControls.beginScan")
+                    : isLiveGraph
+                      ? t("graphControls.watchLive")
+                      : t("graphControls.begin")}
                 </button>
               </div>
             )}
@@ -108,21 +117,21 @@ export function GraphControls({
                   onClick={() => inputRef.current?.click()}
                   className="nt-cta inline-block text-[10.5px] uppercase text-nt-mid hover:text-nt-bright transition-colors py-1"
                 >
-                  Choose folder
+                  {t("graphControls.chooseFolder")}
                 </button>
                 <button
                   type="button"
                   onClick={onWatchAgent}
                   className="nt-cta inline-block text-[10.5px] uppercase text-nt-mid hover:text-nt-bright transition-colors py-1"
                 >
-                  Watch agent
+                  {t("graphControls.watchAgent")}
                 </button>
                 <button
                   type="button"
                   onClick={onReplay}
                   className="nt-cta inline-block text-[10.5px] uppercase text-nt-mid hover:text-nt-bright transition-colors py-1"
                 >
-                  Replay
+                  {t("graphControls.replay")}
                 </button>
               </div>
             )}

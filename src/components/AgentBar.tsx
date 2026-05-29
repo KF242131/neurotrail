@@ -1,18 +1,14 @@
 import { motion } from "framer-motion";
 import type { AgentTelemetry, AgentTokenRun, AgentTokenUsage } from "../types";
-import { ROLE_SHORT_LABELS, roleColor, topRoleEntries } from "../lib/agentRoles";
+import { roleColor, topRoleEntries } from "../lib/agentRoles";
 import { agentColor } from "../lib/agentColors";
+import { roleShortLabel } from "../lib/i18n";
+import { useI18n } from "../i18nContext";
 
 type Props = {
   agents: AgentTelemetry[];
   selectedAgentId?: string;
   onAgentSelected?: (agentId: string | undefined) => void;
-};
-
-const STATUS_LABEL: Record<AgentTelemetry["status"], string> = {
-  active: "working",
-  ready: "idle",
-  planned: "queued",
 };
 
 function formatTokenCount(value: number | undefined) {
@@ -24,17 +20,17 @@ function formatTokenCount(value: number | undefined) {
   return value.toLocaleString();
 }
 
-function usageSummary(usage: AgentTokenUsage | undefined) {
+function usageSummary(usage: AgentTokenUsage | undefined, t: ReturnType<typeof useI18n>["t"]) {
   if (!usage) return undefined;
   const parts = [
-    `total ${formatTokenCount(usage.totalTokens)}`,
-    `out ${formatTokenCount(usage.outputTokens)}`,
+    `${t("agentBar.total")} ${formatTokenCount(usage.totalTokens)}`,
+    `${t("agentBar.output")} ${formatTokenCount(usage.outputTokens)}`,
   ];
   if (usage.cachedInputTokens > 0) {
-    parts.push(`cached ${formatTokenCount(usage.cachedInputTokens)}`);
+    parts.push(`${t("agentBar.cached")} ${formatTokenCount(usage.cachedInputTokens)}`);
   }
   if (usage.reasoningOutputTokens && usage.reasoningOutputTokens > 0) {
-    parts.push(`reason ${formatTokenCount(usage.reasoningOutputTokens)}`);
+    parts.push(`${t("agentBar.reasoning")} ${formatTokenCount(usage.reasoningOutputTokens)}`);
   }
   return parts.join(" · ");
 }
@@ -47,16 +43,16 @@ function latestParallelRun(agent: AgentTelemetry) {
   return agent.tokenRuns?.find((run) => run.laneCount > 1);
 }
 
-function runSummary(run: AgentTokenRun | undefined) {
+function runSummary(run: AgentTokenRun | undefined, t: ReturnType<typeof useI18n>["t"]) {
   if (!run) return undefined;
   const turn = run.usage?.totalTokens
-    ? `turn ${formatTokenCount(run.usage.totalTokens)}`
+    ? `${t("agentBar.turn")} ${formatTokenCount(run.usage.totalTokens)}`
     : undefined;
   const lanes =
     run.laneCount > 1
-      ? `${run.laneCount} lanes`
+      ? `${run.laneCount} ${t("agentBar.lanes")}`
       : run.lanes[0]
-        ? "1 lane"
+        ? `1 ${t("agentBar.lane")}`
         : undefined;
   return [lanes, turn].filter(Boolean).join(" · ");
 }
@@ -74,16 +70,17 @@ function laneSummary(run: AgentTokenRun | undefined) {
 // A horizontal strip — one tile per agent. Layout auto-fits any agent count.
 // Each tile: status dot · name · current focus · token meter.
 export function AgentBar({ agents, selectedAgentId, onAgentSelected }: Props) {
+  const { t } = useI18n();
   const activeCount = agents.filter((a) => a.status === "active").length;
 
   return (
     <div className="px-10 pt-3 pb-5">
       <div className="flex items-baseline gap-3 mb-3 text-[10.5px] uppercase tracking-[0.22em] text-nt-dim">
-        <span>Agents</span>
+        <span>{t("agentBar.title")}</span>
         <span className="nt-mono-num text-nt-mid">
           {agents.length}
           {activeCount > 0 && (
-            <span className="text-nt-bright"> · {activeCount} working</span>
+            <span className="text-nt-bright"> · {activeCount} {t("agentBar.working")}</span>
           )}
         </span>
         {agents.length > 1 && (
@@ -96,7 +93,7 @@ export function AgentBar({ agents, selectedAgentId, onAgentSelected }: Props) {
                 : "text-nt-bright"
             }`}
           >
-            All
+            {t("common.all")}
           </button>
         )}
       </div>
@@ -113,6 +110,7 @@ export function AgentBar({ agents, selectedAgentId, onAgentSelected }: Props) {
             key={a.id}
             agent={a}
             selected={selectedAgentId === a.id}
+            t={t}
             onClick={
               onAgentSelected
                 ? () => onAgentSelected(selectedAgentId === a.id ? undefined : a.id)
@@ -128,10 +126,12 @@ export function AgentBar({ agents, selectedAgentId, onAgentSelected }: Props) {
 function AgentRow({
   agent,
   selected,
+  t,
   onClick,
 }: {
   agent: AgentTelemetry;
   selected?: boolean;
+  t: ReturnType<typeof useI18n>["t"];
   onClick?: () => void;
 }) {
   const isActive = agent.status === "active";
@@ -147,11 +147,16 @@ function AgentRow({
   const parallelRun = latestParallelRun(agent);
   const recentParallelRun =
     parallelRun && parallelRun.id !== tokenRun?.id ? parallelRun : undefined;
-  const latestRunSummary = runSummary(tokenRun);
+  const latestRunSummary = runSummary(tokenRun, t);
   const latestLaneSummary = laneSummary(tokenRun);
-  const recentParallelSummary = runSummary(recentParallelRun);
+  const recentParallelSummary = runSummary(recentParallelRun, t);
   const recentParallelLaneSummary = laneSummary(recentParallelRun);
-  const totalSummary = usageSummary(totalUsage);
+  const totalSummary = usageSummary(totalUsage, t);
+  const statusLabel: Record<AgentTelemetry["status"], string> = {
+    active: t("agentBar.statusActive"),
+    ready: t("agentBar.statusReady"),
+    planned: t("agentBar.statusPlanned"),
+  };
   const pct = Math.max(0, Math.min(1, tokensUsed / Math.max(1, contextWindow)));
 
   return (
@@ -194,7 +199,7 @@ function AgentRow({
 
       <div className="text-[10.5px] text-nt-mid truncate pl-3">
         {agent.currentFocus ??
-          (isActive ? agent.role.toLowerCase() : STATUS_LABEL[agent.status])}
+          (isActive ? agent.role.toLowerCase() : statusLabel[agent.status])}
       </div>
 
       <div className="flex items-center gap-2 pl-3">
@@ -210,7 +215,7 @@ function AgentRow({
           />
         </div>
         <span className="nt-mono-num text-[10px] text-nt-bright/90 tabular-nums shrink-0 whitespace-nowrap">
-          last {formatTokenCount(tokensUsed)}
+          {t("agentBar.last")} {formatTokenCount(tokensUsed)}
           <span className="text-nt-dim">
             /{formatTokenCount(contextWindow)}
           </span>
@@ -231,7 +236,7 @@ function AgentRow({
       )}
       {recentParallelSummary && (
         <div className="pl-3 nt-mono-num text-[9.5px] text-nt-dim truncate">
-          recent parallel {recentParallelSummary}
+          {t("agentBar.recentParallel")} {recentParallelSummary}
           {recentParallelLaneSummary && (
             <span className="text-nt-dim"> · {recentParallelLaneSummary}</span>
           )}
@@ -239,10 +244,10 @@ function AgentRow({
       )}
       {(agent.touchedCount !== undefined || agent.evidenceCount !== undefined) && (
         <div className="pl-3 nt-mono-num text-[9.5px] text-nt-dim">
-          {(agent.touchedCount ?? 0).toLocaleString()} touched
+          {(agent.touchedCount ?? 0).toLocaleString()} {t("agentBar.touched")}
           <span className="text-nt-mid">
             {" "}
-            · {(agent.evidenceCount ?? 0).toLocaleString()} evidence
+            · {(agent.evidenceCount ?? 0).toLocaleString()} {t("agentBar.evidence")}
           </span>
         </div>
       )}
@@ -264,7 +269,7 @@ function AgentRow({
                 }}
               />
               <span className="nt-mono-num">
-                {ROLE_SHORT_LABELS[role]} {count.toLocaleString()}
+                {roleShortLabel(t, role)} {count.toLocaleString()}
               </span>
             </span>
           ))}

@@ -19,6 +19,8 @@ export type ReplayPayload = {
   handoff: HandoffPacket;
   summary?: RunSummary;
   redactionNotice?: string;
+  locale?: string;
+  replayLabels?: Record<string, string>;
 };
 
 export function buildReplayHtml(payload: ReplayPayload): string;

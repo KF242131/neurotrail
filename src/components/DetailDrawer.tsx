@@ -4,9 +4,10 @@ import type {
   NeuroSignal,
   PositionedNeuroNode,
 } from "../types";
-import { ROLE_LABELS, inferAgentRole, roleColor } from "../lib/agentRoles";
-import { ACTION_LABEL } from "../lib/signalStyles";
+import { inferAgentRole, roleColor } from "../lib/agentRoles";
+import { actionLabel, roleLabel } from "../lib/i18n";
 import { agentTokenSource } from "../lib/agentRegistry.js";
+import { useI18n } from "../i18nContext";
 
 export type DetailSelection =
   | { kind: "node"; id: string }
@@ -60,24 +61,24 @@ function latestSignalForEdge(signals: NeuroSignal[], edge: NeuroEdgeData) {
     );
 }
 
-function tokenSource(agent?: AgentTelemetry) {
-  return agent ? agentTokenSource(agent.id) : "unavailable";
+function tokenSource(agent: AgentTelemetry | undefined, unavailable: string) {
+  return agent ? agentTokenSource(agent.id) : unavailable;
 }
 
-function formatTokens(value: number | undefined) {
-  if (!value) return "unavailable";
+function formatTokens(value: number | undefined, unavailable: string) {
+  if (!value) return unavailable;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1000) return `${Math.round(value / 1000)}k`;
   return value.toLocaleString();
 }
 
-function resultFor(signal?: NeuroSignal) {
-  if (!signal) return "unknown";
-  if (signal.action === "test_passed") return "pass";
-  if (signal.action === "test_failed") return "fail";
-  if (signal.category === "evidence") return "evidence";
-  if (signal.category === "waste") return "compressed";
-  return "unknown";
+function resultFor(signal: NeuroSignal | undefined, t: ReturnType<typeof useI18n>["t"]) {
+  if (!signal) return t("common.unknown");
+  if (signal.action === "test_passed") return t("detail.resultPass");
+  if (signal.action === "test_failed") return t("detail.resultFail");
+  if (signal.category === "evidence") return t("detail.resultEvidence");
+  if (signal.category === "waste") return t("detail.resultCompressed");
+  return t("common.unknown");
 }
 
 function laneForSelection(agent?: AgentTelemetry, signal?: NeuroSignal) {
@@ -109,6 +110,7 @@ export function DetailDrawer({
   agents,
   onClose,
 }: Props) {
+  const { t } = useI18n();
   if (!selection) return null;
 
   const node = selection.kind === "node"
@@ -131,14 +133,14 @@ export function DetailDrawer({
     node?.label ??
     (edge ? `${nodeLabel(nodes, edge.source)} → ${nodeLabel(nodes, edge.target)}` : undefined) ??
     signal?.topic ??
-    "Detail";
+    t("detail.title");
 
   return (
     <div className="mt-4 rounded-sm border border-nt-bright/[0.08] bg-black/35 p-3 text-left shadow-[0_18px_60px_rgba(0,0,0,0.24)] backdrop-blur-md">
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[9px] uppercase tracking-[0.18em] text-nt-faint">
-            Detail · {selection.kind}
+            {t("detail.kind", { kind: selection.kind })}
           </div>
           <div className="mt-1 truncate text-[13px] text-nt-bright">
             {title}
@@ -149,31 +151,31 @@ export function DetailDrawer({
           onClick={onClose}
           className="text-[10px] uppercase tracking-[0.14em] text-nt-dim transition-colors hover:text-nt-bright"
         >
-          Close
+          {t("common.close")}
         </button>
       </div>
       <div className="space-y-1.5">
-        {row("agent", agent?.name ?? signal?.agentId ?? edge?.agentId ?? node?.agentId)}
+        {row(t("detail.agent"), agent?.name ?? signal?.agentId ?? edge?.agentId ?? node?.agentId)}
         {role &&
           row(
-            "role",
-            `${ROLE_LABELS[role]}`
+            t("detail.role"),
+            `${roleLabel(t, role)}`
           )}
         {role && (
           <div className="h-px w-full" style={{ background: roleColor(role), opacity: 0.18 }} />
         )}
-        {row("action", signal ? ACTION_LABEL[signal.action] : edge?.type)}
-        {row("source", nodeLabel(nodes, signal?.source ?? edge?.source))}
-        {row("target", nodeLabel(nodes, signal?.target ?? edge?.target ?? node?.id))}
-        {row("path", nodePath(nodes, signal?.target ?? node?.id))}
-        {row("time", signal?.timestamp)}
-        {row("result", resultFor(signal))}
-        {row("tokens", formatTokens(agent?.tokenUsage?.last?.totalTokens))}
-        {row("tok src", tokenSource(agent))}
-        {row("lane", lane ? `${lane.id} · ${lane.label}` : "unavailable")}
+        {row(t("detail.action"), signal ? actionLabel(t, signal.action) : edge?.type)}
+        {row(t("detail.source"), nodeLabel(nodes, signal?.source ?? edge?.source))}
+        {row(t("detail.target"), nodeLabel(nodes, signal?.target ?? edge?.target ?? node?.id))}
+        {row(t("detail.path"), nodePath(nodes, signal?.target ?? node?.id))}
+        {row(t("detail.time"), signal?.timestamp)}
+        {row(t("detail.result"), resultFor(signal, t))}
+        {row(t("detail.tokens"), formatTokens(agent?.tokenUsage?.last?.totalTokens, t("common.unavailable")))}
+        {row(t("detail.tokenSource"), tokenSource(agent, t("common.unavailable")))}
+        {row(t("detail.lane"), lane ? `${lane.id} · ${lane.label}` : t("common.unavailable"))}
       </div>
       <div className="mt-3 border-t border-nt-bright/[0.06] pt-2 text-[10px] leading-snug text-nt-faint">
-        raw event → normalized event → {role ? ROLE_LABELS[role] : "role"} → signal
+        {t("detail.signalLine", { role: role ? roleLabel(t, role) : t("detail.role") })}
       </div>
     </div>
   );

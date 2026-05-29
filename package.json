@@ -44,6 +44,7 @@
     "src/replay/replayDocument.js",
     "src/replay/replayDocument.d.ts",
     "README.md",
+    "README*.md",
     "LICENSE"
   ],
   "scripts": {

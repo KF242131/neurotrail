@@ -12,7 +12,9 @@ import type {
   NeuroSignal,
   PositionedNeuroNode,
 } from "../types";
-import { ROLE_LABELS, inferAgentRole, roleColor } from "../lib/agentRoles";
+import { inferAgentRole, roleColor } from "../lib/agentRoles";
+import { roleLabel } from "../lib/i18n";
+import { useI18n } from "../i18nContext";
 
 type Tab = "trail" | "steps" | "evidence" | "handoff" | "waste" | "context";
 
@@ -34,31 +36,31 @@ type Props = {
   onResumeLive?: () => void;
 };
 
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "trail", label: "Trail" },
-  { id: "steps", label: "Steps" },
-  { id: "evidence", label: "Evidence" },
-  { id: "handoff", label: "Handoff" },
-  { id: "waste", label: "Waste" },
-  { id: "context", label: "Context" },
+const TABS: Tab[] = [
+  "trail",
+  "steps",
+  "evidence",
+  "handoff",
+  "waste",
+  "context",
 ];
 
-const HANDOFF_GROUPS: Array<{ role: AgentRole; label: string }> = [
-  { role: "orchestrator", label: "Decisions" },
-  { role: "research", label: "Research done" },
-  { role: "coding", label: "Coding done" },
-  { role: "writing", label: "Writing done" },
-  { role: "verification", label: "Verification" },
-  { role: "review", label: "Review / Waste" },
+const HANDOFF_GROUPS: AgentRole[] = [
+  "orchestrator",
+  "research",
+  "coding",
+  "writing",
+  "verification",
+  "review",
 ];
 const TARGET_AGENTS: NextAgentTarget[] = ["codex", "claude", "cursor"];
 
-function cleanSignalText(signal: NeuroSignal) {
+function cleanSignalText(signal: NeuroSignal, t: ReturnType<typeof useI18n>["t"]) {
   const raw = signal.reason.replace(/\.$/, "").trim();
   if (/nodeRepl|write_stdin|tab\.screenshot|function_call/i.test(raw)) {
-    return "compressed internal tool noise";
+    return t("evidence.internalNoise");
   }
-  return raw || signal.topic || "agent step";
+  return raw || signal.topic || t("evidence.agentStep");
 }
 
 function nodeLabel(nodes: PositionedNeuroNode[], id: string) {
@@ -126,6 +128,7 @@ export function EvidencePanel({
   onStepSelected,
   onResumeLive,
 }: Props) {
+  const { locale, t } = useI18n();
   const [activeTab, setActiveTab] = useState<Tab>("trail");
   const [targetAgent, setTargetAgent] = useState<NextAgentTarget>("codex");
   const [copyState, setCopyState] = useState<"idle" | "handoff" | "html">("idle");
@@ -149,7 +152,7 @@ export function EvidencePanel({
       for (const signal of [...visibleSignals].reverse()) {
         if (isLiveSummarySignal(signal)) continue;
         if (signal.category === "waste") continue;
-        const key = cleanSignalText(signal).toLowerCase();
+        const key = cleanSignalText(signal, t).toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
         compact.push(signal);
@@ -157,7 +160,7 @@ export function EvidencePanel({
       }
       return compact;
     },
-    [visibleSignals]
+    [t, visibleSignals]
   );
 
   const wasteSignals = useMemo(
@@ -174,7 +177,7 @@ export function EvidencePanel({
       const steps: NeuroSignal[] = [];
       for (const signal of [...visibleSignals].reverse()) {
         if (isLiveSummarySignal(signal) || signal.category === "waste") continue;
-        const key = `${signal.action}:${signal.target}:${cleanSignalText(signal).toLowerCase()}`;
+        const key = `${signal.action}:${signal.target}:${cleanSignalText(signal, t).toLowerCase()}`;
         if (seen.has(key)) continue;
         seen.add(key);
         steps.push(signal);
@@ -182,7 +185,7 @@ export function EvidencePanel({
       }
       return steps.reverse();
     },
-    [visibleSignals]
+    [t, visibleSignals]
   );
 
   const evidenceNodes = evidence.slice(-6).reverse();
@@ -207,10 +210,10 @@ export function EvidencePanel({
   );
   const handoffGroups = useMemo(
     () =>
-      HANDOFF_GROUPS.map((group) => ({
-        ...group,
+      HANDOFF_GROUPS.map((role) => ({
+        role,
         signals: visibleSignals
-          .filter((signal) => signalRole(signal) === group.role)
+          .filter((signal) => signalRole(signal) === role)
           .slice(-2)
           .reverse(),
       })).filter((group) => group.signals.length > 0),
@@ -230,8 +233,9 @@ export function EvidencePanel({
         selectedAgentId,
         selectedRole,
         targetAgent,
+        locale,
       }),
-    [agents, edges, nodes, selectedAgentId, selectedRole, targetAgent, visibleSignals]
+    [agents, edges, locale, nodes, selectedAgentId, selectedRole, targetAgent, visibleSignals]
   );
   const exportHtml = useMemo(
     () =>
@@ -242,9 +246,26 @@ export function EvidencePanel({
         edges,
         signals: visibleSignals,
         handoff: handoffPacket,
+        locale,
       }),
-    [agents, edges, graphName, handoffPacket, nodes, visibleSignals]
+    [agents, edges, graphName, handoffPacket, locale, nodes, visibleSignals]
   );
+  const tabLabels: Record<Tab, string> = {
+    trail: t("evidence.trail"),
+    steps: t("evidence.steps"),
+    evidence: t("evidence.evidence"),
+    handoff: t("evidence.handoff"),
+    waste: t("evidence.waste"),
+    context: t("evidence.context"),
+  };
+  const handoffGroupLabels: Record<AgentRole, string> = {
+    orchestrator: t("evidence.groupDecisions"),
+    research: t("evidence.groupResearch"),
+    coding: t("evidence.groupCoding"),
+    writing: t("evidence.groupWriting"),
+    verification: t("evidence.groupVerification"),
+    review: t("evidence.groupReview"),
+  };
 
   const fallbackCopy = (text: string) => {
     const area = document.createElement("textarea");
@@ -298,6 +319,7 @@ export function EvidencePanel({
         body: JSON.stringify({
           targetAgent,
           redact: redactExport,
+          locale,
           graph: {
             id: sessionId ?? graphName,
             name: graphName,
@@ -311,7 +333,7 @@ export function EvidencePanel({
       });
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(body?.error ?? "Failed to export report");
+        throw new Error(body?.error ?? t("evidence.exportFailed"));
       }
       setExportState({
         status: "done",
@@ -321,7 +343,7 @@ export function EvidencePanel({
     } catch (error) {
       setExportState({
         status: "error",
-        message: error instanceof Error ? error.message : "Failed to export report",
+        message: error instanceof Error ? error.message : t("evidence.exportFailed"),
       });
     }
   };
@@ -329,23 +351,23 @@ export function EvidencePanel({
   return (
     <div className="nt-side-readability pr-10 pl-2 pt-10 pb-6 w-full max-w-[300px] ml-auto text-right">
       <div className="flex items-center justify-end gap-2 text-[11px] tracking-[0.04em] text-nt-mid">
-        <span>{finalAnswer ? "Done" : "Trail"}</span>
+        <span>{finalAnswer ? t("evidence.done") : t("evidence.trail")}</span>
         <span className="nt-mono-num text-nt-mid">{trailSignals.length}</span>
       </div>
 
       <div className="mt-2.5 flex items-center justify-end gap-3">
         {TABS.map((tab) => {
-          const active = tab.id === activeTab;
+          const active = tab === activeTab;
           return (
             <button
-              key={tab.id}
+              key={tab}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setActiveTab(tab)}
               className={`text-[10.5px] transition-colors ${
                 active ? "text-nt-bright" : "text-nt-dim hover:text-nt-mid"
               }`}
             >
-              {tab.label}
+              {tabLabels[tab]}
             </button>
           );
         })}
@@ -355,7 +377,7 @@ export function EvidencePanel({
         {activeTab === "trail" && (
           <div className="space-y-1.5">
             {trailSignals.length === 0 ? (
-              <div className="text-[11px] text-nt-dim">waiting for agent steps</div>
+              <div className="text-[11px] text-nt-dim">{t("evidence.waitingSteps")}</div>
             ) : (
               trailSignals.map((signal, index) => (
                 <motion.div
@@ -366,7 +388,7 @@ export function EvidencePanel({
                   className="flex items-center justify-end gap-2"
                 >
                   <span className="text-[11.5px] leading-snug text-nt-bright/85 max-w-[230px]">
-                    {cleanSignalText(signal)}
+                    {cleanSignalText(signal, t)}
                   </span>
                   <span
                     className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
@@ -390,7 +412,7 @@ export function EvidencePanel({
         {activeTab === "evidence" && (
           <div className="space-y-1.5">
             {evidenceNodes.length === 0 ? (
-              <div className="text-[11px] text-nt-dim">no evidence pinned yet</div>
+              <div className="text-[11px] text-nt-dim">{t("evidence.noEvidence")}</div>
             ) : (
               evidenceNodes.map((id, index) => (
                 <motion.div
@@ -415,11 +437,11 @@ export function EvidencePanel({
                 onClick={onResumeLive}
                 className="mb-1 text-[10px] uppercase tracking-[0.14em] text-nt-bright transition-colors hover:text-nt-mid"
               >
-                Resume live
+                {t("evidence.resumeLive")}
               </button>
             )}
             {stepSignals.length === 0 ? (
-              <div className="text-[11px] text-nt-dim">no replay steps yet</div>
+              <div className="text-[11px] text-nt-dim">{t("evidence.noSteps")}</div>
             ) : (
               stepSignals.map((signal, index) => {
                 const selected = signal.id === selectedSignalId;
@@ -436,7 +458,7 @@ export function EvidencePanel({
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="max-w-[230px] truncate text-[11px]">
-                      {cleanSignalText(signal)}
+                      {cleanSignalText(signal, t)}
                     </span>
                     <span
                       className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
@@ -471,12 +493,12 @@ export function EvidencePanel({
               ))}
             </div>
             {handoffGroups.length === 0 ? (
-              <div className="text-[11px] text-nt-dim">No handoff yet</div>
+              <div className="text-[11px] text-nt-dim">{t("evidence.noHandoff")}</div>
             ) : (
               handoffGroups.map((group) => (
                 <div key={group.role} className="space-y-1">
                   <div className="flex items-center justify-end gap-1.5 text-[10px] uppercase tracking-[0.14em] text-nt-dim">
-                    <span>{group.label}</span>
+                    <span>{handoffGroupLabels[group.role]}</span>
                     <span
                       className="inline-block h-1.5 w-1.5 rounded-full"
                       style={{ background: roleColor(group.role) }}
@@ -487,19 +509,19 @@ export function EvidencePanel({
                       key={signal.id}
                       className="text-[11px] leading-snug text-nt-bright/85"
                     >
-                      {signal.topic ?? cleanSignalText(signal)}
+                      {signal.topic ?? cleanSignalText(signal, t)}
                     </div>
                   ))}
                 </div>
               ))
             )}
             <div className="pt-1.5 text-[10.5px] text-nt-mid">
-              Next{" "}
+              {t("evidence.next")}{" "}
               <span
                 className="text-nt-mid"
                 style={{ color: roleColor(selectedRole ?? handoffPacket.nextRecommendedRole ?? nextRole) }}
               >
-                {ROLE_LABELS[selectedRole ?? handoffPacket.nextRecommendedRole ?? nextRole]}
+                {roleLabel(t, selectedRole ?? handoffPacket.nextRecommendedRole ?? nextRole)}
               </span>
             </div>
             <div className="space-y-1 pt-1 text-[11px] text-nt-mid">
@@ -516,21 +538,21 @@ export function EvidencePanel({
                 onClick={downloadReplay}
                 className="text-[10px] uppercase tracking-[0.14em] text-nt-bright transition-colors hover:text-nt-sand"
               >
-                Share replay ↓
+                {t("evidence.shareReplay")}
               </button>
               <button
                 type="button"
                 onClick={() => void copyText("handoff", handoffPacket.promptForNextAgent)}
                 className="text-[10px] uppercase tracking-[0.14em] text-nt-dim transition-colors hover:text-nt-bright"
               >
-                {copyState === "handoff" ? "Copied" : "Copy Handoff"}
+                {copyState === "handoff" ? t("evidence.copied") : t("evidence.copyHandoff")}
               </button>
               <button
                 type="button"
                 onClick={() => void copyText("html", exportHtml)}
                 className="text-[10px] uppercase tracking-[0.14em] text-nt-dim transition-colors hover:text-nt-bright"
               >
-                {copyState === "html" ? "Copied" : "Copy HTML"}
+                {copyState === "html" ? t("evidence.copied") : t("evidence.copyHtml")}
               </button>
             </div>
             <label className="flex items-center justify-end gap-2 pt-1 text-[10px] uppercase tracking-[0.12em] text-nt-dim">
@@ -540,7 +562,7 @@ export function EvidencePanel({
                 onChange={(event) => setRedactExport(event.target.checked)}
                 className="h-3 w-3 accent-stone-300"
               />
-              Redact sensitive data
+              {t("evidence.redact")}
             </label>
             <div className="flex items-center justify-end gap-3 pt-1">
               <button
@@ -549,7 +571,7 @@ export function EvidencePanel({
                 disabled={exportState.status === "exporting"}
                 className="text-[10px] uppercase tracking-[0.14em] text-nt-dim transition-colors hover:text-nt-bright disabled:opacity-40"
               >
-                {exportState.status === "exporting" ? "Exporting" : "Export Report"}
+                {exportState.status === "exporting" ? t("evidence.exporting") : t("evidence.exportReport")}
               </button>
             </div>
             {exportState.status === "done" && (
@@ -569,7 +591,9 @@ export function EvidencePanel({
         {activeTab === "waste" && (
           <div className="space-y-1.5">
             <div className="text-[11px] text-nt-dim">
-              {wasteCount} minor event{wasteCount === 1 ? "" : "s"} compressed
+              {t(wasteCount === 1 ? "evidence.wasteOne" : "evidence.wasteMany", {
+                count: wasteCount,
+              })}
             </div>
             {wasteSignals.map((signal, index) => (
               <motion.div
@@ -579,7 +603,7 @@ export function EvidencePanel({
                 transition={{ duration: 0.35, delay: index * 0.035 }}
                 className="text-[11px] leading-snug text-nt-dim"
               >
-                {cleanSignalText(signal)}
+                {cleanSignalText(signal, t)}
               </motion.div>
             ))}
           </div>
@@ -588,7 +612,7 @@ export function EvidencePanel({
         {activeTab === "context" && (
           <div className="space-y-1.5">
             {contextSignals.length === 0 ? (
-              <div className="text-[11px] text-nt-dim">context still dormant</div>
+              <div className="text-[11px] text-nt-dim">{t("evidence.contextDormant")}</div>
             ) : (
               contextSignals.map((signal, index) => (
                 <motion.div
@@ -599,7 +623,7 @@ export function EvidencePanel({
                   className="flex items-center justify-end gap-2"
                 >
                   <span className="text-[11.5px] leading-snug text-nt-bright/85 max-w-[230px]">
-                    {signal.topic ?? cleanSignalText(signal)}
+                    {signal.topic ?? cleanSignalText(signal, t)}
                   </span>
                   <span
                     className="inline-block h-1.5 w-1.5 rounded-full shrink-0"

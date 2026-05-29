@@ -33,6 +33,39 @@ function formatPct(value) {
   return Math.round((value || 0) * 100) + "%";
 }
 
+const DEFAULT_REPLAY_LABELS = {
+  estCost: "est. cost",
+  tokens: "tokens",
+  steps: "steps",
+  files: "files",
+  estWaste: "est. waste",
+  wasteCost: "waste cost",
+  stepsShort: "steps",
+  tokensShort: "tok",
+  confidenceShort: "conf",
+  deadTrails: "Dead trails",
+  filesTouched: "Files touched",
+  nextAgentPrompt: "Next-agent prompt",
+  whatAgentDid: "What the agent did",
+  attentionFlags: "Attention flags — for human review",
+  noNotableDetours: "No notable detours detected.",
+  jumpTo: "jump to",
+  morePatterns: "more pattern(s).",
+  replayTitle: "NeuroTrail replay",
+  trust: "Trust",
+  trustSummary: "NeuroTrail trust summary",
+  handoff: "Handoff",
+  nextAgentHandoff: "Next-agent handoff",
+  pause: "Pause",
+  play: "Play",
+  record: "Record",
+  stop: "Stop",
+};
+
+function labelsFor(payload) {
+  return Object.assign({}, DEFAULT_REPLAY_LABELS, payload && payload.replayLabels);
+}
+
 function chip(label, value) {
   return (
     '<div class="nt-chip"><span class="nt-chip-v">' +
@@ -43,20 +76,20 @@ function chip(label, value) {
   );
 }
 
-function summaryChips(summary) {
+function summaryChips(summary, labels) {
   if (!summary) return "";
   const wastePct = summary.wasteCostPct ?? summary.wastePct ?? 0;
   return [
-    chip("est. cost", formatCost(summary.estimatedCostUsd)),
-    chip("tokens", formatTokens(summary.totalTokens || 0)),
-    chip("steps", String(summary.steps || 0)),
-    chip("files", String(summary.filesTouched || 0)),
-    chip("est. waste", formatPct(wastePct)),
-    chip("waste cost", formatCost(summary.wastedCostEstimateUsd)),
+    chip(labels.estCost, formatCost(summary.estimatedCostUsd)),
+    chip(labels.tokens, formatTokens(summary.totalTokens || 0)),
+    chip(labels.steps, String(summary.steps || 0)),
+    chip(labels.files, String(summary.filesTouched || 0)),
+    chip(labels.estWaste, formatPct(wastePct)),
+    chip(labels.wasteCost, formatCost(summary.wastedCostEstimateUsd)),
   ].join("");
 }
 
-function summaryBreakdown(summary) {
+function summaryBreakdown(summary, labels) {
   const items = summary && Array.isArray(summary.wasteBreakdown)
     ? summary.wasteBreakdown
     : [];
@@ -67,9 +100,9 @@ function summaryBreakdown(summary) {
       .map((item) => {
         const bits = [
           item.label || item.reason,
-          String(item.steps || 0) + " steps",
-          formatTokens(item.tokensEstimate || 0) + " tok",
-          formatPct(item.confidence || 0) + " conf",
+          String(item.steps || 0) + " " + labels.stepsShort,
+          formatTokens(item.tokensEstimate || 0) + " " + labels.tokensShort,
+          formatPct(item.confidence || 0) + " " + labels.confidenceShort,
         ];
         return '<span class="nt-waste-item">' + escapeHtml(bits.join(" / ")) + "</span>";
       })
@@ -78,17 +111,17 @@ function summaryBreakdown(summary) {
   );
 }
 
-function handoffSection(handoff) {
+function handoffSection(handoff, labels) {
   if (!handoff) return "";
   const dead =
     handoff.deadTrails && handoff.deadTrails.length
-      ? '<div class="nt-h-sub">Dead trails</div><ul>' +
+      ? '<div class="nt-h-sub">' + escapeHtml(labels.deadTrails) + "</div><ul>" +
         handoff.deadTrails.map((d) => "<li>" + escapeHtml(d) + "</li>").join("") +
         "</ul>"
       : "";
   const files =
     handoff.filesTouched && handoff.filesTouched.length
-      ? '<div class="nt-h-sub">Files touched</div><ul>' +
+      ? '<div class="nt-h-sub">' + escapeHtml(labels.filesTouched) + "</div><ul>" +
         handoff.filesTouched.map((f) => "<li>" + escapeHtml(f) + "</li>").join("") +
         "</ul>"
       : "";
@@ -98,7 +131,7 @@ function handoffSection(handoff) {
     "</div>" +
     files +
     dead +
-    '<div class="nt-h-sub">Next-agent prompt</div>' +
+    '<div class="nt-h-sub">' + escapeHtml(labels.nextAgentPrompt) + "</div>" +
     "<pre>" +
     escapeHtml(handoff.promptForNextAgent || "") +
     "</pre>"
@@ -115,7 +148,7 @@ function fmtClock(sec) {
 // Reviewer-facing trust panel: defensible facts first, then confidence-banded
 // attention flags. Each flag deep-links (#t=<seconds>) into the replay so the
 // reviewer can jump to the moment and judge the evidence themselves.
-function trustSection(trust) {
+function trustSection(trust, labels) {
   if (!trust) return "";
   var facts = (trust.facts || [])
     .map(function (f) {
@@ -137,7 +170,9 @@ function trustSection(trust) {
             return (
               '<li><a class="nt-flag-link" href="#t=' +
               Math.round(fl.timeSec || 0) +
-              '">jump to ' +
+              '">' +
+              escapeHtml(labels.jumpTo) +
+              " " +
               escapeHtml(fmtClock(fl.timeSec)) +
               "</a> · " +
               escapeHtml(fl.label) +
@@ -150,19 +185,23 @@ function trustSection(trust) {
             );
           })
           .join("")
-      : '<li class="nt-flag-none">No notable detours detected.</li>';
+      : '<li class="nt-flag-none">' + escapeHtml(labels.noNotableDetours) + "</li>";
   var more =
     trust.truncated && trust.truncated > 0
-      ? '<li class="nt-flag-none">…and ' + trust.truncated + " more pattern(s).</li>"
+      ? '<li class="nt-flag-none">…and ' +
+        trust.truncated +
+        " " +
+        escapeHtml(labels.morePatterns) +
+        "</li>"
       : "";
   return (
     '<div class="nt-h-summary">' +
     escapeHtml(trust.headline || "") +
     "</div>" +
-    '<div class="nt-h-sub">What the agent did</div><ul class="nt-facts">' +
+    '<div class="nt-h-sub">' + escapeHtml(labels.whatAgentDid) + '</div><ul class="nt-facts">' +
     facts +
     "</ul>" +
-    '<div class="nt-h-sub">Attention flags — for human review</div><ul class="nt-flags">' +
+    '<div class="nt-h-sub">' + escapeHtml(labels.attentionFlags) + '</div><ul class="nt-flags">' +
     flags +
     more +
     "</ul>" +
@@ -188,6 +227,12 @@ const PLAYER_RUNTIME = `
   if (!el) return;
   var data;
   try { data = JSON.parse(el.textContent || '{}'); } catch (e) { return; }
+  var L = Object.assign({
+    pause: 'Pause',
+    play: 'Play',
+    record: 'Record',
+    stop: 'Stop'
+  }, data.replayLabels || {});
 
   var nodes = data.nodes || [];
   var edges = data.edges || [];
@@ -351,7 +396,7 @@ const PLAYER_RUNTIME = `
     var m = Math.floor(sec / 60), s = Math.floor(sec % 60);
     return m + ':' + (s < 10 ? '0' + s : s);
   }
-  function updatePlay() { if (playBtn) playBtn.textContent = playing ? 'Pause' : 'Play'; }
+  function updatePlay() { if (playBtn) playBtn.textContent = playing ? L.pause : L.play; }
   function updateScrub() {
     var p = Math.max(0, Math.min(1, t / duration));
     if (fill) fill.style.width = (p * 100) + '%';
@@ -409,7 +454,7 @@ const PLAYER_RUNTIME = `
   // ---- recording ----
   var recorder = null, recording = false, chunks = [];
   function stopRec() {
-    if (recorder && recording) { recording = false; recorder.stop(); if (recBtn) recBtn.textContent = 'Record'; }
+    if (recorder && recording) { recording = false; recorder.stop(); if (recBtn) recBtn.textContent = L.record; }
   }
   if (recBtn) {
     var supported = typeof window.MediaRecorder !== 'undefined' && !!canvas.captureStream;
@@ -430,7 +475,7 @@ const PLAYER_RUNTIME = `
           setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         };
         recording = true; recorder.start();
-        recBtn.textContent = 'Stop';
+        recBtn.textContent = L.stop;
         t = 0; last = null; playing = true; updatePlay();
       } catch (err) { recording = false; }
     });
@@ -480,6 +525,8 @@ const PLAYER_RUNTIME = `
 /** Build a single self-contained, no-server replay HTML document. */
 export function buildReplayHtml(payload) {
   const timestamp = payload.exportedAt || new Date().toISOString();
+  const labels = labelsFor(payload);
+  const locale = payload.locale || "en";
   const signals = payload.signals || [];
   const durationSec =
     payload.durationSec ||
@@ -489,20 +536,22 @@ export function buildReplayHtml(payload) {
   const title = payload.title || "NeuroTrail replay";
   const trust = payload.trustSummary;
   const trustToggle = trust
-    ? '<button id="nt-trust-toggle" class="nt-btn" type="button">Trust</button>'
+    ? '<button id="nt-trust-toggle" class="nt-btn" type="button">' + escapeHtml(labels.trust) + "</button>"
     : "";
   const trustPanel = trust
-    ? '<aside id="nt-trust" class="open"><h2>NeuroTrail trust summary</h2>' +
-      trustSection(trust) +
+    ? '<aside id="nt-trust" class="open"><h2>' +
+      escapeHtml(labels.trustSummary) +
+      "</h2>" +
+      trustSection(trust, labels) +
       "</aside>"
     : "";
 
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(locale)}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} · NeuroTrail replay</title>
+  <title>${escapeHtml(title)} · ${escapeHtml(labels.replayTitle)}</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -582,26 +631,26 @@ export function buildReplayHtml(payload) {
   <canvas id="nt-canvas"></canvas>
 
   <div class="nt-top">
-    <div class="nt-brand">NeuroTrail replay</div>
+    <div class="nt-brand">${escapeHtml(labels.replayTitle)}</div>
     <div class="nt-title">${escapeHtml(title)}</div>
-    <div class="nt-chips">${summaryChips(payload.summary)}</div>
-    ${summaryBreakdown(payload.summary)}
+    <div class="nt-chips">${summaryChips(payload.summary, labels)}</div>
+    ${summaryBreakdown(payload.summary, labels)}
   </div>
 
   <div class="nt-bar">
-    <button id="nt-play" class="nt-btn" type="button">Pause</button>
+    <button id="nt-play" class="nt-btn" type="button">${escapeHtml(labels.pause)}</button>
     <button id="nt-speed" class="nt-btn" type="button">1x</button>
     <div id="nt-track"><div id="nt-ticks"></div><div id="nt-fill"></div><div id="nt-thumb"></div></div>
     <span id="nt-time">0:00 / 0:00</span>
-    <button id="nt-rec" class="nt-btn" type="button">Record</button>
+    <button id="nt-rec" class="nt-btn" type="button">${escapeHtml(labels.record)}</button>
     ${trustToggle}
-    <button id="nt-handoff-toggle" class="nt-btn" type="button">Handoff</button>
+    <button id="nt-handoff-toggle" class="nt-btn" type="button">${escapeHtml(labels.handoff)}</button>
   </div>
 
   <aside id="nt-handoff">
-    <h2>Next-agent handoff</h2>
+    <h2>${escapeHtml(labels.nextAgentHandoff)}</h2>
     ${redactionNotice(payload)}
-    ${handoffSection(payload.handoff)}
+    ${handoffSection(payload.handoff, labels)}
   </aside>
 
   ${trustPanel}

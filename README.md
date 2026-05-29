@@ -12,11 +12,45 @@ The review layer for agent-written code. Local-first. Cross-agent. Zero instrume
 &nbsp;[![CI](https://github.com/KF242131/neurotrail/actions/workflows/ci.yml/badge.svg)](https://github.com/KF242131/neurotrail/actions/workflows/ci.yml)
 &nbsp;[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+<p>
+  <a href="https://github.com/KF242131/neurotrail">GitHub</a>
+  · <a href="https://www.npmjs.com/package/neurotrail">npm</a>
+  · <a href="docs/LAUNCH.md">launch notes</a>
+</p>
+
+<p>
+  🇺🇸 English
+  · 🇯🇵 <a href="README.ja-JP.md">日本語</a>
+  · 🇨🇳 <a href="README.zh-CN.md">简体中文</a>
+  · 🇰🇷 <a href="README.ko.md">한국어</a>
+  · 🇩🇪 <a href="README.de.md">Deutsch</a>
+  · 🇪🇸 <a href="README.es.md">Español</a>
+  · 🇫🇷 <a href="README.fr.md">Français</a>
+  · 🇧🇷 <a href="README.pt-BR.md">Português</a>
+</p>
+
 <br/>
 
 <img src="docs/hero.gif" alt="Claude, Codex and Gemini collaborating on one pull request, replayed as a color-coded neural graph" width="820" />
 
-<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
+<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR across a large task file map. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
+
+<br/><br/>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/task-map.gif" alt="A large pull request task map with implementation, config, policy, billing, API, tests, docs, and GitHub workflow files" width="400" />
+    </td>
+    <td width="50%">
+      <img src="docs/review-path.gif" alt="Gemini reviewing the evidence path and NeuroTrail linking the trust summary back to exact files and commands" width="400" />
+    </td>
+  </tr>
+  <tr>
+    <td><sub><strong>Task map.</strong> Dozens of files stay visible by directory while the active agent trail lights up.</sub></td>
+    <td><sub><strong>Evidence trail.</strong> Review flags link back to the exact file, command, or artifact that caused them.</sub></td>
+  </tr>
+</table>
 
 </div>
 
@@ -110,7 +144,7 @@ For watching a run unfold in real time, clone the repo and run the dev viewer:
 
 ```bash
 git clone https://github.com/KF242131/neurotrail.git
-cd NeuroTrail
+cd neurotrail
 npm install
 npm run dev
 ```
@@ -118,6 +152,19 @@ npm run dev
 Open `http://localhost:5173`. With no active session it plays a **sample agent
 PR replay**; the moment a supported agent starts working in the same workspace,
 it upgrades to the live run. Press `c` for cinematic mode.
+
+## Languages
+
+The live viewer now detects the browser language and includes a header language
+menu. UI chrome supports English, 日本語, Español, Français, Deutsch, Português,
+한국어, and 中文; shareable replay HTML inherits the selected language. Transcript
+content, file names, commands, and agent-written text remain in their original
+language so the replay stays faithful to the source logs.
+
+Localized READMEs are available for:
+[日本語](README.ja-JP.md), [简体中文](README.zh-CN.md),
+[한국어](README.ko.md), [Deutsch](README.de.md), [Español](README.es.md),
+[Français](README.fr.md), and [Português](README.pt-BR.md).
 
 ## CLI
 

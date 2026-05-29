@@ -6,6 +6,7 @@ import {
   generateHandoffPacket,
   type NextAgentTarget,
 } from "../src/lib/handoffPacket";
+import { createTranslator, resolveLocale, type LocaleId } from "../src/lib/i18n";
 import { redactJson, redactText } from "../src/lib/redaction";
 import type {
   AgentTelemetry,
@@ -30,6 +31,7 @@ type ExportRequestBody = {
   graph?: ExportGraph;
   targetAgent?: NextAgentTarget;
   redact?: boolean;
+  locale?: LocaleId | string;
 };
 
 type ExportResult = {
@@ -83,6 +85,7 @@ export async function writeReportFiles(
       ExportGraph;
     targetAgent?: NextAgentTarget;
     redact?: boolean;
+    locale?: LocaleId | string;
   }
 ): Promise<ExportResult> {
   const createdAt = new Date();
@@ -91,16 +94,19 @@ export async function writeReportFiles(
   const sessionId = input.graph.sessionId ?? input.graph.id ?? "local-session";
   const graph = redacted ? redactJson(input.graph) : input.graph;
   const targetAgent = input.targetAgent ?? "codex";
+  const locale = resolveLocale(input.locale);
+  const t = createTranslator(locale);
   const handoff = generateHandoffPacket({
     nodes: graph.nodes,
     edges: graph.edges,
     signals: graph.signals,
     agents: graph.agents ?? [],
     targetAgent,
+    locale,
   });
   const redactionNotice = redacted
-    ? "Basic redaction enabled. Review before sharing."
-    : "Basic redaction disabled. Review before sharing.";
+    ? t("report.redactionOn")
+    : t("report.redactionOff");
   const handoffMarkdown = `${handoff.promptForNextAgent}\n\n---\n${redactionNotice}\n`;
   const html = generateReplayHtmlReport({
     title: graph.name ?? "NeuroTrail report",
@@ -111,6 +117,7 @@ export async function writeReportFiles(
     signals: graph.signals,
     handoff,
     redactionNotice,
+    locale,
   });
 
   const finalHtml = redacted ? redactText(html) : html;
@@ -175,6 +182,7 @@ export async function handleReportExportRequest(
       },
       targetAgent: body.targetAgent,
       redact: body.redact,
+      locale: body.locale,
     });
     sendJson(res, 200, result);
   } catch (error) {

@@ -23,7 +23,9 @@ import {
   getAgentTelemetry,
 } from "./data/demo";
 import { fetchLiveAgentGraph } from "./lib/claudeLive";
-import { AGENT_ROLES, ROLE_LABELS, inferAgentRole, roleColor } from "./lib/agentRoles";
+import { AGENT_ROLES, inferAgentRole, roleColor } from "./lib/agentRoles";
+import { roleLabel } from "./lib/i18n";
+import { useI18n } from "./i18nContext";
 import {
   computeRunSummary,
   formatCostUsd,
@@ -95,17 +97,12 @@ function computeMaxDepth(
 }
 
 const VISUAL_MODE: GraphVisualMode = "minimal";
-const GRAPH_PROJECTIONS: Array<{ id: GraphProjection; label: string }> = [
-  { id: "focus", label: "Focus" },
-  { id: "trail", label: "Trail" },
-  { id: "waste", label: "Waste" },
-  { id: "handoff", label: "Handoff" },
-  { id: "context", label: "Context" },
-];
-
-const ROLE_FILTERS: Array<{ id?: AgentRole; label: string }> = [
-  { label: "All" },
-  ...AGENT_ROLES.map((role) => ({ id: role, label: ROLE_LABELS[role] })),
+const GRAPH_PROJECTIONS: GraphProjection[] = [
+  "focus",
+  "trail",
+  "waste",
+  "handoff",
+  "context",
 ];
 
 function isLiveAgentSource(source: ProjectGraph["source"]) {
@@ -237,6 +234,7 @@ function projectGraphForView(
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [projectGraph, setProjectGraph] =
     useState<ProjectGraph>(DEMO_PROJECT_GRAPH);
   const [currentTime, setCurrentTime] = useState(WAITING_TIME);
@@ -478,15 +476,15 @@ export default function App() {
   const headerStatus =
     isLiveAgentGraph(projectGraph)
       ? projectGraph.isActive
-        ? "live"
-        : "stale"
+        ? t("status.live")
+        : t("status.stale")
       : monitorState === "idle"
-      ? "idle"
+      ? t("status.idle")
       : monitorState === "pending"
-        ? "ready"
+        ? t("status.ready")
         : monitorState === "running"
-          ? "running"
-          : "done";
+          ? t("status.running")
+          : t("status.done");
 
   const headerDim = monitorState === "idle";
   const showGraph = monitorState !== "idle" && viewGraph.nodes.length > 0;
@@ -494,6 +492,15 @@ export default function App() {
     !cinematic &&
     ((monitorState === "running" || monitorState === "complete") ||
       agents.length > 0);
+  const displayGraphName =
+    projectGraph.source === "demo" ? t("demo.graphName") : projectGraph.name;
+  const projectionLabels: Record<GraphProjection, string> = {
+    focus: t("projection.focus"),
+    trail: t("projection.trail"),
+    waste: t("projection.waste"),
+    handoff: t("projection.handoff"),
+    context: t("projection.context"),
+  };
 
   return (
     <div className="relative w-full h-full flex flex-col bg-nt-bg overflow-hidden">
@@ -527,7 +534,7 @@ export default function App() {
                   nodeStates={nodeStates}
                   edgeStates={edgeStates}
                   filters={graphFilters}
-                  visualMode={VISUAL_MODE}
+                  visualMode={cinematic ? "cinematic" : VISUAL_MODE}
                   focusNodeId={displaySignal?.target}
                   focusSourceId={displaySignal?.source}
                   evidenceIds={evidence}
@@ -559,19 +566,19 @@ export default function App() {
               <div className="absolute top-8 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
                 <div className="flex items-center gap-3">
                   {GRAPH_PROJECTIONS.map((item) => {
-                    const active = projection === item.id;
+                    const active = projection === item;
                     return (
                       <button
-                        key={item.id}
+                        key={item}
                         type="button"
-                        onClick={() => setProjection(item.id)}
+                        onClick={() => setProjection(item)}
                         className={`text-[10.5px] uppercase tracking-[0.16em] transition-colors ${
                           active
                             ? "text-nt-bright"
                             : "text-nt-dim hover:text-nt-mid"
                         }`}
                       >
-                        {item.label}
+                        {projectionLabels[item]}
                       </button>
                     );
                   })}
@@ -598,7 +605,7 @@ export default function App() {
 
             <GraphControls
               monitorState={monitorState}
-              graphName={projectGraph.name}
+              graphName={displayGraphName}
               isLocalGraph={projectGraph.source === "local"}
               fileCount={projectGraph.fileCount}
               isLiveGraph={isLiveAgentGraph(projectGraph)}
@@ -636,7 +643,7 @@ export default function App() {
                 onClick={() => setCinematic(false)}
                 className="absolute top-6 right-6 z-30 text-[10px] uppercase tracking-[0.16em] text-nt-dim transition-colors hover:text-nt-bright"
               >
-                Exit · Esc
+                {t("transport.exitCinematic")}
               </button>
             )}
           </main>
@@ -651,7 +658,7 @@ export default function App() {
                   finalAnswer={finalAnswerActive}
                   signals={roleScopedSignals}
                   agents={agents}
-                  graphName={projectGraph.name}
+                  graphName={displayGraphName}
                   selectedAgentId={effectiveSelectedAgentId}
                   selectedRole={selectedRole}
                   selectedSignalId={selectedSignalId}
@@ -709,16 +716,17 @@ export default function App() {
 }
 
 function EmptyLiveState() {
+  const { t } = useI18n();
+
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div className="max-w-[320px] text-center">
         <div className="mx-auto mb-5 h-1.5 w-1.5 rounded-full bg-nt-mid/70 shadow-[0_0_18px_rgba(236,230,215,0.45)]" />
         <div className="text-[10px] uppercase tracking-[0.24em] text-nt-dim">
-          Waiting for agent activity
+          {t("empty.title")}
         </div>
         <p className="mt-3 text-[13px] leading-relaxed text-nt-mid">
-          Start working in Codex, Claude, Gemini, Cursor, Cline, or Roo Code.
-          NeuroTrail will appear when a live local session is detected.
+          {t("empty.body")}
         </p>
       </div>
     </div>
@@ -780,6 +788,7 @@ function ReplayTransport({
   onSeek: (time: number) => void;
   onCinematic: () => void;
 }) {
+  const { t } = useI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const progress = totalDuration > 0 ? Math.min(1, currentTime / totalDuration) : 0;
   const ticks = useMemo(
@@ -805,17 +814,21 @@ function ReplayTransport({
     onSeek(ratio * totalDuration);
   };
 
-  const playLabel = isComplete ? "Replay" : paused ? "Play" : "Pause";
+  const playLabel = isComplete
+    ? t("transport.replay")
+    : paused
+      ? t("transport.play")
+      : t("transport.pause");
 
   return (
     <div className="flex items-center gap-5 px-5 pt-3 pb-0.5">
       <div className="flex items-center gap-4 shrink-0">
-        <SummaryStat label="est. cost" value={formatCostUsd(summary.estimatedCostUsd)} />
-        <SummaryStat label="tokens" value={formatTokens(summary.totalTokens)} />
-        <SummaryStat label="steps" value={String(summary.steps)} />
-        <SummaryStat label="files" value={String(summary.filesTouched)} />
+        <SummaryStat label={t("summary.cost")} value={formatCostUsd(summary.estimatedCostUsd)} />
+        <SummaryStat label={t("summary.tokens")} value={formatTokens(summary.totalTokens)} />
+        <SummaryStat label={t("summary.steps")} value={String(summary.steps)} />
+        <SummaryStat label={t("summary.files")} value={String(summary.filesTouched)} />
         <SummaryStat
-          label="est. waste"
+          label={t("summary.waste")}
           value={formatPct(summary.wasteCostPct ?? summary.wastePct)}
           muted={(summary.wasteCostPct ?? summary.wastePct) < 0.005}
         />
@@ -873,7 +886,7 @@ function ReplayTransport({
             className="inline-block h-1.5 w-1.5 rounded-full"
             style={{ background: isLive ? "#9FB89A" : "#9B9284" }}
           />
-          {isLive ? "following live session" : "replay"}
+          {isLive ? t("transport.followingLive") : t("transport.replayState")}
         </div>
       )}
 
@@ -882,19 +895,21 @@ function ReplayTransport({
         onClick={onCinematic}
         className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-nt-dim transition-colors hover:text-nt-bright"
       >
-        Cinematic
+        {t("transport.cinematic")}
       </button>
     </div>
   );
 }
 
 function LineLegend() {
+  const { t } = useI18n();
+
   return (
     <div className="flex items-center gap-3 text-[9px] uppercase tracking-[0.13em] text-nt-dim">
-      <span>Lines</span>
-      <LineLegendItem label="Structure" kind="structure" />
-      <LineLegendItem label="Agent trail" kind="trail" />
-      <LineLegendItem label="Waste memory" kind="compressed" />
+      <span>{t("legend.lines")}</span>
+      <LineLegendItem label={t("legend.structure")} kind="structure" />
+      <LineLegendItem label={t("legend.agentTrail")} kind="trail" />
+      <LineLegendItem label={t("legend.wasteMemory")} kind="compressed" />
     </div>
   );
 }
@@ -943,10 +958,16 @@ function RoleFilter({
   currentRole?: AgentRole;
   onRoleSelected: (role: AgentRole | undefined) => void;
 }) {
+  const { t } = useI18n();
+  const roleFilters: Array<{ id?: AgentRole; label: string }> = [
+    { label: t("common.all") },
+    ...AGENT_ROLES.map((role) => ({ id: role, label: roleLabel(t, role) })),
+  ];
+
   return (
     <div className="flex items-center gap-2 text-[9.5px] uppercase tracking-[0.14em]">
-      <span className="text-nt-dim">Roles</span>
-      {ROLE_FILTERS.map((item) => {
+      <span className="text-nt-dim">{t("roles.title")}</span>
+      {roleFilters.map((item) => {
         const active = selectedRole === item.id;
         const isCurrentRole = !!item.id && item.id === currentRole;
         const color = roleColor(item.id);

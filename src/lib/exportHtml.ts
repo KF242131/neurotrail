@@ -1,4 +1,5 @@
 import { computeRunSummary } from "./costModel";
+import { replayLabelsFor, resolveLocale, type LocaleId } from "./i18n";
 import { buildReplayHtml, type ReplayPayload } from "../replay/replayDocument.js";
 import type { HandoffPacket } from "./handoffPacket";
 import type {
@@ -17,6 +18,7 @@ type ReplayHtmlInput = {
   signals: NeuroSignal[];
   handoff: HandoffPacket;
   redactionNotice?: string;
+  locale?: LocaleId | string;
 };
 
 /**
@@ -26,6 +28,7 @@ type ReplayHtmlInput = {
  * src/replay/replayDocument.js (shared with the CLI).
  */
 export function generateReplayHtmlReport(input: ReplayHtmlInput): string {
+  const locale = resolveLocale(input.locale);
   const summary = computeRunSummary(
     input.signals,
     input.agents ?? [],
@@ -43,6 +46,8 @@ export function generateReplayHtmlReport(input: ReplayHtmlInput): string {
     handoff: input.handoff,
     summary,
     redactionNotice: input.redactionNotice,
+    locale,
+    replayLabels: replayLabelsFor(locale),
   };
   return buildReplayHtml(payload);
 }

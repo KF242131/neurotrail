@@ -1,7 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
 import type { NeuroSignal, PositionedNeuroNode } from "../types";
-import { ROLE_LABELS, inferAgentRole, roleColor } from "../lib/agentRoles";
-import { ACTION_LABEL, actionColor } from "../lib/signalStyles";
+import { inferAgentRole, roleColor } from "../lib/agentRoles";
+import { actionColor } from "../lib/signalStyles";
+import { actionLabel, roleLabel } from "../lib/i18n";
+import { useI18n } from "../i18nContext";
 
 type Props = {
   signal?: NeuroSignal;
@@ -10,12 +12,16 @@ type Props = {
   evidenceCount: number;
 };
 
-function compactTopic(signal: NeuroSignal | undefined, targetLabel: string) {
-  if (!signal) return "Waiting for agent activity";
+function compactTopic(
+  signal: NeuroSignal | undefined,
+  targetLabel: string,
+  t: ReturnType<typeof useI18n>["t"]
+) {
+  if (!signal) return t("focus.waiting");
   if (signal.topic) return signal.topic;
   const reason = signal.reason.replace(/\.$/, "");
   if (reason.length <= 42) return reason;
-  return targetLabel || "Current reasoning step";
+  return targetLabel || t("focus.currentStep");
 }
 
 // A quiet "current reasoning" readout rather than a telemetry readout.
@@ -25,23 +31,24 @@ export function AgentFocusPanel({
   nodes,
   evidenceCount,
 }: Props) {
+  const { t } = useI18n();
   const role = signal ? signal.role ?? inferAgentRole(signal) : undefined;
   const color = role
     ? roleColor(role)
     : signal
       ? actionColor(signal.action)
       : "#6a6760";
-  const actionWord = signal ? ACTION_LABEL[signal.action] : "still";
+  const actionWord = signal ? actionLabel(t, signal.action) : t("status.idle");
   const nodeLabel = (id?: string) =>
     id ? (nodes.find((n) => n.id === id)?.label ?? id) : "";
   const targetLabel = nodeLabel(signal?.target);
   const confidence = signal?.confidence ?? (signal?.category === "waste" ? 0.62 : 0.86);
-  const topic = compactTopic(signal, targetLabel);
+  const topic = compactTopic(signal, targetLabel, t);
 
   return (
     <div className="pl-10 pr-2 pt-10 pb-6 w-full max-w-[300px]">
       <div className="text-[10.5px] tracking-[0.18em] text-nt-faint">
-        Now
+        {t("focus.now")}
       </div>
 
       <AnimatePresence mode="wait">
@@ -82,16 +89,21 @@ export function AgentFocusPanel({
 
           <div className="pl-[14px] pt-1.5 space-y-1">
             <div className="nt-mono-num text-[10.5px] text-nt-dim">
-              {evidenceCount} evidence node{evidenceCount === 1 ? "" : "s"}
+              {t(
+                evidenceCount === 1
+                  ? "focus.evidenceNode"
+                  : "focus.evidenceNodes",
+                { count: evidenceCount }
+              )}
             </div>
             {role && (
               <div className="text-[10px] tracking-[0.14em] text-nt-faint">
-                {ROLE_LABELS[role]}
+                {roleLabel(t, role)}
               </div>
             )}
             <div className="flex items-center gap-2">
               <span className="text-[10px] tracking-[0.16em] text-nt-faint">
-                Conf
+                {t("focus.confidence")}
               </span>
               <span className="nt-mono-num text-[11px] text-nt-mid">
                 {(confidence * 100).toFixed(0)}

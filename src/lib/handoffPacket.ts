@@ -1,4 +1,11 @@
-import { ROLE_LABELS, inferAgentRole } from "./agentRoles";
+import { inferAgentRole } from "./agentRoles";
+import {
+  createTranslator,
+  resolveLocale,
+  roleLabel,
+  type LocaleId,
+  type Translator,
+} from "./i18n";
 import type {
   AgentRole,
   AgentTelemetry,
@@ -31,6 +38,7 @@ type HandoffInput = {
   selectedAgentId?: string;
   selectedRole?: AgentRole;
   targetAgent?: NextAgentTarget;
+  locale?: LocaleId | string;
 };
 
 function signalRole(signal: NeuroSignal) {
@@ -120,48 +128,50 @@ function linesForRole(
   );
 }
 
-function targetInstruction(targetAgent: NextAgentTarget) {
+function targetInstruction(targetAgent: NextAgentTarget, t: Translator) {
   switch (targetAgent) {
     case "claude":
-      return "Use this as Claude context. Preserve the reasoning trail, then continue with the recommended next role.";
+      return t("handoff.targetClaude");
     case "cursor":
-      return "Use this as Cursor working context. Open the recommended files first, then continue with the recommended next role.";
+      return t("handoff.targetCursor");
     case "codex":
     default:
-      return "Use this as Codex working context. Inspect only the recommended context first, then continue with the recommended next role.";
+      return t("handoff.targetCodex");
   }
 }
 
-function renderSection(title: string, items: string[]) {
-  if (items.length === 0) return [`## ${title}`, "- None captured yet."].join("\n");
+function renderSection(title: string, items: string[], t: Translator) {
+  if (items.length === 0) return [`## ${title}`, `- ${t("common.noneCaptured")}`].join("\n");
   return [`## ${title}`, ...items.map((item) => `- ${item}`)].join("\n");
 }
 
 export function renderHandoffPrompt(
   packet: Omit<HandoffPacket, "promptForNextAgent">,
-  targetAgent: NextAgentTarget
+  targetAgent: NextAgentTarget,
+  locale: LocaleId | string = "en"
 ) {
+  const t = createTranslator(resolveLocale(locale));
   const sections = [
-    `# NeuroTrail Handoff for ${targetAgent}`,
+    `# ${t("handoff.title", { target: targetAgent })}`,
     packet.summary,
     "",
-    renderSection("Research done", packet.researchDone),
+    renderSection(t("handoff.researchDone"), packet.researchDone, t),
     "",
-    renderSection("Coding done", packet.codingDone),
+    renderSection(t("handoff.codingDone"), packet.codingDone, t),
     "",
-    renderSection("Verification", packet.verification),
+    renderSection(t("handoff.verification"), packet.verification, t),
     "",
-    renderSection("Review / waste", [...packet.reviewNeeded, ...packet.deadTrails]),
+    renderSection(t("handoff.reviewWaste"), [...packet.reviewNeeded, ...packet.deadTrails], t),
     "",
-    renderSection("Evidence", packet.evidence),
+    renderSection(t("handoff.evidence"), packet.evidence, t),
     "",
-    renderSection("Recommended files", packet.nextRecommendedFiles),
+    renderSection(t("handoff.recommendedFiles"), packet.nextRecommendedFiles, t),
     "",
-    `## Next role`,
-    `- ${ROLE_LABELS[packet.nextRecommendedRole]}`,
+    `## ${t("handoff.nextRole")}`,
+    `- ${roleLabel(t, packet.nextRecommendedRole)}`,
     "",
-    `## Instruction`,
-    `- ${targetInstruction(targetAgent)}`,
+    `## ${t("handoff.instruction")}`,
+    `- ${targetInstruction(targetAgent, t)}`,
   ];
   return sections.join("\n");
 }
@@ -174,6 +184,8 @@ export function generateHandoffPacket(input: HandoffInput): HandoffPacket {
   });
   const signals = scopedSignals.length > 0 ? scopedSignals : input.signals;
   const targetAgent = input.targetAgent ?? "codex";
+  const locale = resolveLocale(input.locale);
+  const t = createTranslator(locale);
 
   const filesTouched = unique(
     signals
@@ -222,14 +234,17 @@ export function generateHandoffPacket(input: HandoffInput): HandoffPacket {
   const activeAgents = (input.agents ?? [])
     .filter((agent) => agent.status === "active")
     .map((agent) => agent.name);
-  const summary = [
-    "NeuroTrail captured a local-first working trail",
-    activeAgents.length > 0 ? `from ${activeAgents.join(", ")}` : undefined,
-    filesTouched.length > 0 ? `with ${filesTouched.length} edited file(s)` : undefined,
-    `next role: ${ROLE_LABELS[nextRole]}.`,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const summary = t("handoff.summary", {
+    agents:
+      activeAgents.length > 0
+        ? t("handoff.summaryAgents", { agents: activeAgents.join(", ") })
+        : "",
+    files:
+      filesTouched.length > 0
+        ? t("handoff.summaryFiles", { count: filesTouched.length })
+        : "",
+    role: roleLabel(t, nextRole),
+  });
 
   const packetWithoutPrompt = {
     summary,
@@ -246,6 +261,6 @@ export function generateHandoffPacket(input: HandoffInput): HandoffPacket {
 
   return {
     ...packetWithoutPrompt,
-    promptForNextAgent: renderHandoffPrompt(packetWithoutPrompt, targetAgent),
+    promptForNextAgent: renderHandoffPrompt(packetWithoutPrompt, targetAgent, locale),
   };
 }
