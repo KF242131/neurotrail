@@ -27,6 +27,23 @@
 
 <img src="docs/hero.gif" alt="複数のAIエージェントの作業をNeuroTrailがニューラルグラフとして再生している様子" width="820" />
 
+<br/><br/>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/task-map.gif" alt="Claude、Codex、Geminiが触れたファイルとテストコマンドを示すコンパクトなPR証拠マップ" width="400" />
+    </td>
+    <td width="50%">
+      <img src="docs/review-path.gif" alt="Geminiのレビュー経路と、信頼サマリーが正確なファイルやコマンドへリンクする様子" width="400" />
+    </td>
+  </tr>
+  <tr>
+    <td><sub><strong>タスクマップ。</strong>3エージェントのPR物語は保ちつつ、ライブビューアと同じリポジトリ/ファイルツリー構造で表示します。</sub></td>
+    <td><sub><strong>証拠トレイル。</strong>注意フラグから、原因になったファイル・コマンド・成果物へ戻れます。</sub></td>
+  </tr>
+</table>
+
 </div>
 
 ---

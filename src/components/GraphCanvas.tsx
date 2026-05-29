@@ -79,6 +79,34 @@ function typeVisible(type: NeuroNodeType, filters: GraphFilters) {
   return true;
 }
 
+function visualSizeForNode(node: PositionedNeuroNode) {
+  const prominence = node.prominence ?? "core";
+  const size =
+    prominence === "micro"
+      ? 7
+      : node.type === "agent"
+        ? 44
+        : node.type === "decision"
+          ? 26
+          : node.type === "directory"
+            ? prominence === "core"
+              ? 26
+              : 20
+            : prominence === "branch"
+              ? 12
+              : 9;
+  const width = prominence === "micro" ? size : node.type === "agent" ? 180 : 140;
+  return { width, height: size };
+}
+
+function reactFlowPositionForNode(node: PositionedNeuroNode) {
+  const size = visualSizeForNode(node);
+  return {
+    x: node.position.x - size.width / 2,
+    y: node.position.y - size.height / 2,
+  };
+}
+
 function graphDistances(
   nodes: PositionedNeuroNode[],
   edges: NeuroEdgeData[],
@@ -118,7 +146,8 @@ function graphDistances(
 
 function centeredViewportForNodes(
   nodes: PositionedNeuroNode[],
-  container: HTMLDivElement | null
+  container: HTMLDivElement | null,
+  visualMode: GraphVisualMode
 ) {
   if (nodes.length === 0 || !container) return undefined;
 
@@ -141,13 +170,23 @@ function centeredViewportForNodes(
   const graphHeight = Math.max(180, maxY - minY);
   const graphCenterX = (minX + maxX) / 2;
   const graphCenterY = (minY + maxY) / 2;
+  const branchAnchor = nodes.find((node) => node.id.startsWith("branch:"));
+  const anchorX = branchAnchor?.position.x ?? graphCenterX;
+  const anchorY = branchAnchor?.position.y ?? graphCenterY;
 
   // The side panels are overlays, so ReactFlow's native fitView centers against
   // the whole pane and can leave the actual graph visually off-center. Fit into
   // the readable stage between panels and below the projection controls instead.
-  const sideInset = rect.width >= 920 ? Math.min(310, rect.width * 0.24) : 36;
-  const topInset = rect.height >= 520 ? 118 : 64;
-  const bottomInset = rect.height >= 520 ? 54 : 36;
+  const cinematic = visualMode === "cinematic";
+  const sideInset = cinematic
+    ? rect.width >= 920
+      ? Math.min(96, rect.width * 0.08)
+      : 24
+    : rect.width >= 920
+      ? Math.min(310, rect.width * 0.24)
+      : 36;
+  const topInset = cinematic ? (rect.height >= 520 ? 76 : 48) : rect.height >= 520 ? 118 : 64;
+  const bottomInset = cinematic ? (rect.height >= 520 ? 40 : 24) : rect.height >= 520 ? 54 : 36;
   const stageLeft = sideInset;
   const stageRight = Math.max(stageLeft + 260, rect.width - sideInset);
   const stageTop = topInset;
@@ -155,11 +194,11 @@ function centeredViewportForNodes(
   const stageWidth = Math.max(260, stageRight - stageLeft);
   const stageHeight = Math.max(220, stageBottom - stageTop);
 
-  const padding = 160;
+  const padding = cinematic ? 84 : 160;
   const zoom = Math.max(
-    0.34,
+    cinematic ? 0.46 : 0.34,
     Math.min(
-      1.04,
+      cinematic ? 1.14 : 1.04,
       Math.min(stageWidth / (graphWidth + padding), stageHeight / (graphHeight + padding))
     )
   );
@@ -167,8 +206,8 @@ function centeredViewportForNodes(
   const centerY = (stageTop + stageBottom) / 2;
 
   return {
-    x: centerX - graphCenterX * zoom,
-    y: centerY - graphCenterY * zoom,
+    x: centerX - anchorX * zoom,
+    y: centerY - anchorY * zoom,
     zoom,
   };
 }
@@ -228,7 +267,14 @@ export function GraphCanvas({
         let changed = false;
         const next = new Map(previous);
         for (const node of nodes) {
-          if (next.has(node.id)) continue;
+          const cached = next.get(node.id);
+          if (
+            cached &&
+            cached.x === node.position.x &&
+            cached.y === node.position.y
+          ) {
+            continue;
+          }
           next.set(node.id, node.position);
           changed = true;
         }
@@ -333,7 +379,7 @@ export function GraphCanvas({
       const { width, height } = entry.contentRect;
       if (width <= 0 || height <= 0) return;
 
-      const viewport = centeredViewportForNodes(nodes, containerRef.current);
+      const viewport = centeredViewportForNodes(nodes, containerRef.current, visualMode);
       if (!viewport) return;
 
       const isFirstFit = lastDimensionsRef.current.width === 0;
@@ -352,7 +398,7 @@ export function GraphCanvas({
     return () => {
       observer.disconnect();
     };
-  }, [autoFit, flowInstance, nodes]);
+  }, [autoFit, flowInstance, nodes, visualMode]);
 
   const activeContextIds = useMemo(() => {
     const ids = new Set<string>();
@@ -461,7 +507,7 @@ export function GraphCanvas({
         return {
           id: n.id,
           type: "neuro",
-          position: n.position,
+          position: reactFlowPositionForNode(n),
           data: data as unknown as Record<string, unknown>,
           draggable: false,
           selectable: false,
@@ -554,7 +600,7 @@ export function GraphCanvas({
           nodes={rfNodes}
           edges={[]}
           nodeTypes={nodeTypes}
-          nodeOrigin={[0.5, 0.5]}
+          nodeOrigin={[0, 0]}
           defaultViewport={
             autoFit
               ? { x: 430, y: 230, zoom: 0.42 }

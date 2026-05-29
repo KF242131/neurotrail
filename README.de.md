@@ -27,6 +27,23 @@ Local-first. Agent-übergreifend. Keine Instrumentierung nötig.
 
 <img src="docs/hero.gif" alt="NeuroTrail spielt die Arbeit mehrerer AI-Agenten als neuronalen Graphen ab" width="820" />
 
+<br/><br/>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/task-map.gif" alt="Kompakte PR-Evidenzkarte mit den Dateien und Testbefehlen von Claude, Codex und Gemini" width="400" />
+    </td>
+    <td width="50%">
+      <img src="docs/review-path.gif" alt="Gemini prüft den Evidenzpfad, während die Trust Summary zu konkreten Dateien und Befehlen zurückverlinkt" width="400" />
+    </td>
+  </tr>
+  <tr>
+    <td><sub><strong>Task Map.</strong>Die Drei-Agenten-PR-Story bleibt erhalten, aber die Darstellung nutzt dieselbe Repository-/Dateibaumstruktur wie der Live Viewer.</sub></td>
+    <td><sub><strong>Evidenzpfad.</strong>Aufmerksamkeitsflags führen zurück zur auslösenden Datei, zum Befehl oder Artefakt.</sub></td>
+  </tr>
+</table>
+
 </div>
 
 ---

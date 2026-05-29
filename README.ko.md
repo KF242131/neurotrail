@@ -27,6 +27,23 @@
 
 <img src="docs/hero.gif" alt="NeuroTrail이 여러 AI 에이전트의 PR 작업을 신경망 그래프로 재생하는 모습" width="820" />
 
+<br/><br/>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/task-map.gif" alt="Claude, Codex, Gemini가 실제로 건드린 파일과 테스트 명령을 보여 주는 압축된 PR 증거 맵" width="400" />
+    </td>
+    <td width="50%">
+      <img src="docs/review-path.gif" alt="Gemini의 리뷰 경로와 신뢰 요약이 정확한 파일 및 명령으로 연결되는 모습" width="400" />
+    </td>
+  </tr>
+  <tr>
+    <td><sub><strong>태스크 맵.</strong>3개 에이전트의 PR 이야기는 유지하고, 라이브 뷰어와 같은 저장소/파일 트리 구조로 표시합니다.</sub></td>
+    <td><sub><strong>증거 트레일.</strong>주의 플래그가 원인이 된 파일, 명령, 산출물로 다시 연결됩니다.</sub></td>
+  </tr>
+</table>
+
 </div>
 
 ---

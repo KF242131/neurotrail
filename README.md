@@ -33,21 +33,21 @@ The review layer for agent-written code. Local-first. Cross-agent. Zero instrume
 
 <img src="docs/hero.gif" alt="Claude, Codex and Gemini collaborating on one pull request, replayed as a color-coded neural graph" width="820" />
 
-<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR across a large task file map. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
+<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR on the same production-style repository map used by live Codex sessions. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
 
 <br/><br/>
 
 <table>
   <tr>
     <td width="50%">
-      <img src="docs/task-map.gif" alt="A large pull request task map with implementation, config, policy, billing, API, tests, docs, and GitHub workflow files" width="400" />
+      <img src="docs/task-map.gif" alt="A compact pull request evidence map showing Claude, Codex and Gemini around the exact files and test command they touched" width="400" />
     </td>
     <td width="50%">
       <img src="docs/review-path.gif" alt="Gemini reviewing the evidence path and NeuroTrail linking the trust summary back to exact files and commands" width="400" />
     </td>
   </tr>
   <tr>
-    <td><sub><strong>Task map.</strong> Dozens of files stay visible by directory while the active agent trail lights up.</sub></td>
+    <td><sub><strong>Task map.</strong> The demo keeps the three-agent PR story while using the live viewer's repository/file-tree structure.</sub></td>
     <td><sub><strong>Evidence trail.</strong> Review flags link back to the exact file, command, or artifact that caused them.</sub></td>
   </tr>
 </table>

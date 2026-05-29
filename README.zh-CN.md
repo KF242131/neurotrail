@@ -27,6 +27,23 @@
 
 <img src="docs/hero.gif" alt="NeuroTrail 将多个 AI 智能体的一次 PR 工作回放为神经图" width="820" />
 
+<br/><br/>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/task-map.gif" alt="紧凑的 PR 证据图，展示 Claude、Codex 和 Gemini 触碰过的文件与测试命令" width="400" />
+    </td>
+    <td width="50%">
+      <img src="docs/review-path.gif" alt="Gemini 审查证据路径，并将信任摘要链接回具体文件和命令" width="400" />
+    </td>
+  </tr>
+  <tr>
+    <td><sub><strong>任务地图。</strong>保留三个智能体的 PR 故事，同时使用实时查看器同款仓库/文件树结构。</sub></td>
+    <td><sub><strong>证据轨迹。</strong>注意标记会链接回触发它的文件、命令或产物。</sub></td>
+  </tr>
+</table>
+
 </div>
 
 ---

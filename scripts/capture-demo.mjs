@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// Capture the built-in "sample agent PR replay" as hero media for the README.
-// Writes docs/hero.gif (looping) and docs/hero.png (poster frame).
+// Capture the built-in "sample agent PR replay" as README media.
+// Writes:
+//   docs/hero.gif / docs/hero.png
+//   docs/task-map.gif / docs/task-map.png
+//   docs/review-path.gif / docs/review-path.png
 //
 // One-time setup (dev-only tools, NOT shipped in the npm package):
 //   npm i -D playwright && npx playwright install chromium
@@ -9,8 +12,8 @@
 //   npm run demo:capture
 //
 // It starts the Vite viewer pointed at an EMPTY workspace (so the sample replay
-// plays instead of any live session), records ~14s of the animation headlessly,
-// and encodes an optimized GIF with ffmpeg.
+// plays instead of any live session), records the cinematic replay headlessly,
+// and encodes several optimized GIF slices with ffmpeg.
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -21,10 +24,21 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = 4319;
 const WIDTH = 1280;
 const HEIGHT = 800;
-const SECONDS = 13;
-const GIF_WIDTH = 800;
-const FPS = 10;
-const GIF_SECONDS = 11; // trim the encoded loop (keeps the README GIF small)
+const SECONDS = 42;
+const GIF_WIDTH = 780;
+const FPS = 9;
+
+const POSTERS = [
+  { name: "hero", at: 1.2 },
+  { name: "task-map", at: 13 },
+  { name: "review-path", at: 32 },
+];
+
+const GIF_CLIPS = [
+  { name: "hero", start: 2, duration: 12 },
+  { name: "task-map", start: 11, duration: 10 },
+  { name: "review-path", start: 28, duration: 10 },
+];
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -75,7 +89,7 @@ const server = spawn(
 
 try {
   await waitForServer(`http://localhost:${PORT}/`);
-  console.log("• recording the replay…");
+  console.log("• recording the cinematic replay…");
   const { chromium } = playwright;
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -86,9 +100,19 @@ try {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "load" });
   await page.waitForTimeout(1500); // let the graph settle in
   await page.keyboard.press("c"); // cinematic mode: hide side panels for a clean shot
-  await page.waitForTimeout(1200);
-  await page.screenshot({ path: path.join(docsDir, "hero.png") });
-  await page.waitForTimeout(SECONDS * 1000);
+  const captureStart = Date.now();
+  const waitUntil = async (seconds) => {
+    const elapsed = Date.now() - captureStart;
+    const waitMs = Math.max(0, seconds * 1000 - elapsed);
+    if (waitMs > 0) await page.waitForTimeout(waitMs);
+  };
+
+  for (const poster of POSTERS) {
+    await waitUntil(poster.at);
+    await page.screenshot({ path: path.join(docsDir, `${poster.name}.png`) });
+  }
+
+  await waitUntil(SECONDS);
   await context.close(); // flushes the video file
   await browser.close();
 
@@ -96,18 +120,40 @@ try {
   if (!webm) throw new Error("no video produced");
   const webmPath = path.join(videoDir, webm);
 
-  console.log("• encoding optimized gif (ffmpeg, two-pass palette)…");
-  const palette = path.join(videoDir, "palette.png");
+  console.log("• encoding optimized gifs (ffmpeg, two-pass palette)…");
   const vf = `fps=${FPS},scale=${GIF_WIDTH}:-1:flags=lanczos`;
-  const trim = ["-ss", "1", "-t", String(GIF_SECONDS)];
-  await run("ffmpeg", ["-y", ...trim, "-i", webmPath, "-vf", `${vf},palettegen=stats_mode=diff`, palette]);
-  await run("ffmpeg", [
-    "-y", ...trim, "-i", webmPath, "-i", palette,
-    "-lavfi", `${vf}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3`,
-    path.join(docsDir, "hero.gif"),
-  ]);
+  for (const clip of GIF_CLIPS) {
+    const palette = path.join(videoDir, `${clip.name}-palette.png`);
+    const trim = ["-ss", String(clip.start), "-t", String(clip.duration)];
+    await run("ffmpeg", [
+      "-y",
+      ...trim,
+      "-i",
+      webmPath,
+      "-vf",
+      `${vf},palettegen=stats_mode=diff`,
+      "-frames:v",
+      "1",
+      "-update",
+      "1",
+      palette,
+    ]);
+    await run("ffmpeg", [
+      "-y",
+      ...trim,
+      "-i",
+      webmPath,
+      "-i",
+      palette,
+      "-lavfi",
+      `${vf}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3`,
+      path.join(docsDir, `${clip.name}.gif`),
+    ]);
+  }
 
-  console.log("\n✓ wrote docs/hero.gif and docs/hero.png");
+  console.log(
+    "\n✓ wrote docs/hero.gif, docs/task-map.gif, docs/review-path.gif and poster PNGs"
+  );
 } finally {
   server.kill();
 }
