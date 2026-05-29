@@ -27,6 +27,19 @@ export { TOTAL_DURATION };
 type LayoutNode = PositionedNeuroNode;
 
 const TAU = Math.PI * 2;
+const AGENT_POSITIONS: Record<DemoAgentId, { x: number; y: number }> = {
+  claude: { x: -150, y: -82 },
+  codex: { x: 150, y: -82 },
+  gemini: { x: 0, y: 130 },
+};
+const AGENT_ISLANDS: Record<
+  DemoAgentId,
+  { startAngle: number; endAngle: number; radius: number }
+> = {
+  claude: { startAngle: Math.PI * 1.12, endAngle: Math.PI * 1.58, radius: 235 },
+  codex: { startAngle: Math.PI * 1.42, endAngle: Math.PI * 1.92, radius: 235 },
+  gemini: { startAngle: Math.PI * 0.18, endAngle: Math.PI * 0.82, radius: 230 },
+};
 
 function sanitizeId(value: string) {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
@@ -38,6 +51,10 @@ function basename(path: string) {
 
 function dirId(path: string) {
   return path ? `dir:${path}` : ROOT_ID;
+}
+
+function agentNodeId(agentId: DemoAgentId) {
+  return `agent:${agentId}`;
 }
 
 function parentPath(path: string) {
@@ -104,26 +121,22 @@ function applyProductionLayout(nodes: LayoutNode[]) {
   const branch = nodes.find((node) => node.id === BRANCH_ID);
   const root = nodes.find((node) => node.id === ROOT_ID);
   const transcript = nodes.find((node) => node.id === TRANSCRIPT_ID);
-  const agentPositions: Record<DemoAgentId, { x: number; y: number }> = {
-    claude: { x: -96, y: -76 },
-    codex: { x: 96, y: -76 },
-    gemini: { x: 0, y: 104 },
-  };
 
   if (branch) branch.position = { x: 0, y: 0 };
   placeOrbit(root, 205, Math.PI * 0.88);
   placeOrbit(transcript, 205, Math.PI * 0.34);
 
   DEMO_AGENTS.forEach((agent) => {
-    const node = nodes.find((item) => item.id === `agent:${agent.id}`);
-    if (node) node.position = agentPositions[agent.id];
+    const node = nodes.find((item) => item.id === agentNodeId(agent.id));
+    if (node) node.position = AGENT_POSITIONS[agent.id];
   });
 
   const specialIds = new Set([
     BRANCH_ID,
     ROOT_ID,
     TRANSCRIPT_ID,
-    ...DEMO_AGENTS.map((agent) => `agent:${agent.id}`),
+    ...DEMO_AGENTS.map((agent) => agentNodeId(agent.id)),
+    ...DEMO_TARGETS.map((target) => target.id),
   ]);
   const byRing = new Map<number, LayoutNode[]>();
   for (const node of nodes) {
@@ -143,6 +156,28 @@ function applyProductionLayout(nodes: LayoutNode[]) {
       const angle = offset + (TAU * index) / Math.max(1, bucket.length);
       const breathingRoom = Math.sin(index * 1.7 + ring) * 18;
       node.position = orbitPoint(radius + breathingRoom, angle);
+    });
+  }
+
+  for (const agent of DEMO_AGENTS) {
+    const island = AGENT_ISLANDS[agent.id];
+    const anchor = AGENT_POSITIONS[agent.id];
+    const targets = DEMO_TARGETS.filter((target) => target.owner === agent.id);
+    targets.forEach((target, index) => {
+      const node = nodes.find((item) => item.id === target.id);
+      if (!node) return;
+      const ratio = targets.length <= 1 ? 0.5 : index / (targets.length - 1);
+      const angle =
+        island.startAngle + (island.endAngle - island.startAngle) * ratio;
+      const radius =
+        island.radius +
+        (target.prominence === "core" ? -42 : 0) +
+        (target.type === "command" ? 56 : 0) +
+        (index % 2) * 34;
+      node.position = {
+        x: anchor.x + Math.cos(angle) * radius,
+        y: anchor.y + Math.sin(angle) * radius,
+      };
     });
   }
 }
@@ -261,7 +296,7 @@ export const demoSignals: NeuroSignal[] = DEMO_STEPS.map((step, index) => ({
   time: step.t,
   action: step.action,
   agentId: step.agent,
-  source: BRANCH_ID,
+  source: agentNodeId(step.agent),
   target: step.target,
   intensity: step.category === "waste" ? 0.58 : 0.84,
   reason: step.reason,
@@ -282,7 +317,7 @@ const structureEdges: NeuroEdgeData[] = [
   ...DEMO_AGENTS.map((agent) => ({
     id: `agent-branch-${agent.id}`,
     source: BRANCH_ID,
-    target: `agent:${agent.id}`,
+    target: agentNodeId(agent.id),
     type: "decides" as const,
     kind: "recommendation" as const,
     agentId: agent.id,
@@ -317,7 +352,8 @@ for (const target of DEMO_TARGETS) {
 const trailEdges: NeuroEdgeData[] = [];
 const trailByPair = new Map<string, NeuroEdgeData>();
 for (const step of DEMO_STEPS) {
-  const key = `${BRANCH_ID}>${step.target}>${step.agent}`;
+  const source = agentNodeId(step.agent);
+  const key = `${source}>${step.target}>${step.agent}`;
   const existing = trailByPair.get(key);
   if (existing) {
     existing.weight += 0.18;
@@ -326,7 +362,7 @@ for (const step of DEMO_STEPS) {
 
   const edge: NeuroEdgeData = {
     id: `trail-${trailEdges.length}-${sanitizeId(key)}`,
-    source: BRANCH_ID,
+    source,
     target: step.target,
     type: edgeTypeFor(step.action),
     kind: step.category === "waste" ? "memory" : "trail",
