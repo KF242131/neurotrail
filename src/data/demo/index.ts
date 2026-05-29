@@ -104,15 +104,19 @@ function applyProductionLayout(nodes: LayoutNode[]) {
   const branch = nodes.find((node) => node.id === BRANCH_ID);
   const root = nodes.find((node) => node.id === ROOT_ID);
   const transcript = nodes.find((node) => node.id === TRANSCRIPT_ID);
+  const agentPositions: Record<DemoAgentId, { x: number; y: number }> = {
+    claude: { x: -96, y: -76 },
+    codex: { x: 96, y: -76 },
+    gemini: { x: 0, y: 104 },
+  };
 
   if (branch) branch.position = { x: 0, y: 0 };
   placeOrbit(root, 205, Math.PI * 0.88);
   placeOrbit(transcript, 205, Math.PI * 0.34);
 
-  DEMO_AGENTS.forEach((agent, index) => {
+  DEMO_AGENTS.forEach((agent) => {
     const node = nodes.find((item) => item.id === `agent:${agent.id}`);
-    const angle = -Math.PI * 0.92 + (TAU * index) / DEMO_AGENTS.length;
-    placeOrbit(node, 132, angle);
+    if (node) node.position = agentPositions[agent.id];
   });
 
   const specialIds = new Set([
