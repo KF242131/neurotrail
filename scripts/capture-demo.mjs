@@ -12,7 +12,7 @@
 //   npm run demo:capture
 //
 // It starts the Vite viewer pointed at an EMPTY workspace (so the sample replay
-// plays instead of any live session), records the cinematic replay headlessly,
+// plays instead of any live session), records the dashboard replay headlessly,
 // and encodes several optimized GIF slices with ffmpeg.
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
@@ -89,7 +89,7 @@ const server = spawn(
 
 try {
   await waitForServer(`http://localhost:${PORT}/`);
-  console.log("• recording the cinematic replay…");
+  console.log("• recording the dashboard replay with side panels and metrics…");
   const { chromium } = playwright;
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -99,7 +99,6 @@ try {
   const page = await context.newPage();
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "load" });
   await page.waitForTimeout(1500); // let the graph settle in
-  await page.keyboard.press("c"); // cinematic mode: hide side panels for a clean shot
   const captureStart = Date.now();
   const waitUntil = async (seconds) => {
     const elapsed = Date.now() - captureStart;

@@ -27,6 +27,8 @@ Local-first. Agent-übergreifend. Keine Instrumentierung nötig.
 
 <img src="docs/hero.gif" alt="NeuroTrail spielt die Arbeit mehrerer AI-Agenten als neuronalen Graphen ab" width="820" />
 
+<sub>Claude, Codex und Gemini arbeiten an einem PR; das Replay zeigt nicht nur die Karte, sondern auch den aktuellen Schritt links, den Evidenzpfad rechts sowie Kosten, Tokens und Agentenstatus unten.</sub>
+
 <br/><br/>
 
 <table>
@@ -39,8 +41,8 @@ Local-first. Agent-übergreifend. Keine Instrumentierung nötig.
     </td>
   </tr>
   <tr>
-    <td><sub><strong>Task Map.</strong>Die Drei-Agenten-PR-Story bleibt erhalten, aber die Darstellung nutzt dieselbe Repository-/Dateibaumstruktur wie der Live Viewer.</sub></td>
-    <td><sub><strong>Evidenzpfad.</strong>Aufmerksamkeitsflags führen zurück zur auslösenden Datei, zum Befehl oder Artefakt.</sub></td>
+    <td><sub><strong>Task Map.</strong>Die Seitenpanels und unteren Metriken bleiben sichtbar, während der Graph die Repository-/Dateibaumstruktur des Live Viewers zeigt.</sub></td>
+    <td><sub><strong>Evidenzpfad.</strong>Aufmerksamkeitsflags führen zurück zur auslösenden Datei, zum Befehl oder Artefakt; Kosten und Agentenkontext bleiben im Bild.</sub></td>
   </tr>
 </table>
 

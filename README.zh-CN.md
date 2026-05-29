@@ -27,6 +27,8 @@
 
 <img src="docs/hero.gif" alt="NeuroTrail 将多个 AI 智能体的一次 PR 工作回放为神经图" width="820" />
 
+<sub>Claude、Codex、Gemini 三个智能体推进同一个 PR；回放不仅显示地图，也保留左侧当前步骤、右侧证据轨迹、底部成本、令牌和智能体状态。</sub>
+
 <br/><br/>
 
 <table>
@@ -39,8 +41,8 @@
     </td>
   </tr>
   <tr>
-    <td><sub><strong>任务地图。</strong>保留三个智能体的 PR 故事，同时使用实时查看器同款仓库/文件树结构。</sub></td>
-    <td><sub><strong>证据轨迹。</strong>注意标记会链接回触发它的文件、命令或产物。</sub></td>
+    <td><sub><strong>任务地图。</strong>保留左右信息面板和底部指标，同时展示实时查看器同款仓库/文件树结构。</sub></td>
+    <td><sub><strong>证据轨迹。</strong>注意标记会链接回触发它的文件、命令或产物，并在同一画面保留成本与智能体上下文。</sub></td>
   </tr>
 </table>
 

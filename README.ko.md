@@ -27,6 +27,8 @@
 
 <img src="docs/hero.gif" alt="NeuroTrail이 여러 AI 에이전트의 PR 작업을 신경망 그래프로 재생하는 모습" width="820" />
 
+<sub>Claude, Codex, Gemini가 하나의 PR을 진행하는 모습을 맵뿐 아니라 왼쪽 현재 단계, 오른쪽 증거 트레일, 하단 비용·토큰·에이전트 상태까지 포함해 재생합니다.</sub>
+
 <br/><br/>
 
 <table>
@@ -39,8 +41,8 @@
     </td>
   </tr>
   <tr>
-    <td><sub><strong>태스크 맵.</strong>3개 에이전트의 PR 이야기는 유지하고, 라이브 뷰어와 같은 저장소/파일 트리 구조로 표시합니다.</sub></td>
-    <td><sub><strong>증거 트레일.</strong>주의 플래그가 원인이 된 파일, 명령, 산출물로 다시 연결됩니다.</sub></td>
+    <td><sub><strong>태스크 맵.</strong>좌우 정보 패널과 하단 지표를 유지하면서 라이브 뷰어와 같은 저장소/파일 트리 구조를 보여 줍니다.</sub></td>
+    <td><sub><strong>증거 트레일.</strong>주의 플래그가 원인이 된 파일, 명령, 산출물로 다시 연결되며 비용과 에이전트 맥락도 같은 화면에 남습니다.</sub></td>
   </tr>
 </table>
 

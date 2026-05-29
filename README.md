@@ -33,7 +33,7 @@ The review layer for agent-written code. Local-first. Cross-agent. Zero instrume
 
 <img src="docs/hero.gif" alt="Claude, Codex and Gemini collaborating on one pull request, replayed as a color-coded neural graph" width="820" />
 
-<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR on the same production-style repository map used by live Codex sessions. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
+<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR in the full reviewer dashboard: live map, current step, evidence trail, cost, tokens, and per-agent activity. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
 
 <br/><br/>
 
@@ -47,8 +47,8 @@ The review layer for agent-written code. Local-first. Cross-agent. Zero instrume
     </td>
   </tr>
   <tr>
-    <td><sub><strong>Task map.</strong> The demo keeps the three-agent PR story while using the live viewer's repository/file-tree structure.</sub></td>
-    <td><sub><strong>Evidence trail.</strong> Review flags link back to the exact file, command, or artifact that caused them.</sub></td>
+    <td><sub><strong>Task map.</strong> The left/right panels and bottom metrics stay visible while the graph shows the live viewer's repository/file-tree structure.</sub></td>
+    <td><sub><strong>Evidence trail.</strong> Review flags link back to the exact file, command, or artifact, with cost and agent context still in frame.</sub></td>
   </tr>
 </table>
 

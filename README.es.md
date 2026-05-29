@@ -27,6 +27,8 @@ Local-first. Multiagente. Sin instrumentación.
 
 <img src="docs/hero.gif" alt="NeuroTrail reproduce el trabajo de varios agentes de IA como un grafo neuronal" width="820" />
 
+<sub>Claude, Codex y Gemini avanzan un mismo PR; la reproducción muestra no solo el mapa, sino también el paso actual a la izquierda, la evidencia a la derecha y coste, tokens y estado de agentes abajo.</sub>
+
 <br/><br/>
 
 <table>
@@ -39,8 +41,8 @@ Local-first. Multiagente. Sin instrumentación.
     </td>
   </tr>
   <tr>
-    <td><sub><strong>Mapa de tareas.</strong>La historia del PR con tres agentes se mantiene, usando la misma estructura de repositorio y árbol de archivos del visor en vivo.</sub></td>
-    <td><sub><strong>Rastro de evidencia.</strong>Las alertas enlazan con el archivo, comando o artefacto exacto que las causó.</sub></td>
+    <td><sub><strong>Mapa de tareas.</strong>Los paneles laterales y las métricas inferiores siguen visibles mientras el grafo muestra la estructura de repositorio/árbol de archivos del visor en vivo.</sub></td>
+    <td><sub><strong>Rastro de evidencia.</strong>Las alertas enlazan con el archivo, comando o artefacto exacto, manteniendo coste y contexto de agentes en pantalla.</sub></td>
   </tr>
 </table>
 
