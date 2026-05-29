@@ -167,9 +167,13 @@ export type NeuroSignal = {
 export type AgentTokenUsage = {
   inputTokens: number;
   cachedInputTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
   outputTokens: number;
   reasoningOutputTokens?: number;
   totalTokens: number;
+  actualCostUsd?: number;
+  costSource?: "actual" | "estimated" | "fallback";
 };
 
 export type AgentTokenLane = {

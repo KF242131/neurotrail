@@ -26,7 +26,12 @@ type ReplayHtmlInput = {
  * src/replay/replayDocument.js (shared with the CLI).
  */
 export function generateReplayHtmlReport(input: ReplayHtmlInput): string {
-  const summary = computeRunSummary(input.signals, input.agents ?? [], input.nodes);
+  const summary = computeRunSummary(
+    input.signals,
+    input.agents ?? [],
+    input.nodes,
+    input.edges
+  );
   const payload: ReplayPayload = {
     version: "2",
     exportedAt: input.timestamp ?? new Date().toISOString(),

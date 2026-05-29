@@ -179,9 +179,13 @@ type AgentTelemetry = {
 type AgentTokenUsage = {
   inputTokens: number;
   cachedInputTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
   outputTokens: number;
   reasoningOutputTokens?: number;
   totalTokens: number;
+  actualCostUsd?: number;
+  costSource?: "actual" | "estimated" | "fallback";
 };
 
 type AgentTokenLane = {
@@ -1668,6 +1672,23 @@ function numericField(input: Record<string, unknown> | undefined, key: string) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function optionalNumericField(input: Record<string, unknown> | undefined, key: string) {
+  const value = input?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function actualCostUsdFrom(...inputs: Array<Record<string, unknown> | undefined>) {
+  for (const input of inputs) {
+    const value =
+      optionalNumericField(input, "actualCostUsd") ??
+      optionalNumericField(input, "totalCostUsd") ??
+      optionalNumericField(input, "total_cost_usd") ??
+      optionalNumericField(input, "cost_usd");
+    if (value !== undefined && value >= 0 && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 function codexUsageFrom(input: unknown): AgentTokenUsage | undefined {
   if (!input || typeof input !== "object") return undefined;
   const value = input as Record<string, unknown>;
@@ -1675,32 +1696,42 @@ function codexUsageFrom(input: unknown): AgentTokenUsage | undefined {
   const cachedInputTokens = numericField(value, "cached_input_tokens");
   const outputTokens = numericField(value, "output_tokens");
   const reasoningOutputTokens = numericField(value, "reasoning_output_tokens");
+  const actualCostUsd = actualCostUsdFrom(value);
   const totalTokens =
-    numericField(value, "total_tokens") || inputTokens + outputTokens;
+    numericField(value, "total_tokens") ||
+    inputTokens + outputTokens + reasoningOutputTokens;
   if (totalTokens <= 0) return undefined;
   return {
     inputTokens,
     cachedInputTokens,
     outputTokens,
     ...(reasoningOutputTokens > 0 ? { reasoningOutputTokens } : {}),
+    ...(actualCostUsd !== undefined ? { actualCostUsd, costSource: "actual" as const } : {}),
     totalTokens,
   };
 }
 
-function claudeUsageFrom(input: unknown): AgentTokenUsage | undefined {
+function claudeUsageFrom(
+  input: unknown,
+  source?: Record<string, unknown>
+): AgentTokenUsage | undefined {
   if (!input || typeof input !== "object") return undefined;
   const value = input as Record<string, unknown>;
   const inputTokens = numericField(value, "input_tokens");
-  const cachedInputTokens =
-    numericField(value, "cache_creation_input_tokens") +
-    numericField(value, "cache_read_input_tokens");
+  const cacheCreationInputTokens = numericField(value, "cache_creation_input_tokens");
+  const cacheReadInputTokens = numericField(value, "cache_read_input_tokens");
+  const cachedInputTokens = cacheCreationInputTokens + cacheReadInputTokens;
   const outputTokens = numericField(value, "output_tokens");
+  const actualCostUsd = actualCostUsdFrom(value, source);
   const totalTokens = inputTokens + cachedInputTokens + outputTokens;
   if (totalTokens <= 0) return undefined;
   return {
     inputTokens,
     cachedInputTokens,
+    ...(cacheCreationInputTokens > 0 ? { cacheCreationInputTokens } : {}),
+    ...(cacheReadInputTokens > 0 ? { cacheReadInputTokens } : {}),
     outputTokens,
+    ...(actualCostUsd !== undefined ? { actualCostUsd, costSource: "actual" as const } : {}),
     totalTokens,
   };
 }
@@ -1713,6 +1744,7 @@ function geminiUsageFrom(input: unknown): AgentTokenUsage | undefined {
   const outputTokens = numericField(value, "output");
   const reasoningOutputTokens = numericField(value, "thoughts");
   const toolTokens = numericField(value, "tool");
+  const actualCostUsd = actualCostUsdFrom(value);
   const totalTokens =
     numericField(value, "total") ||
     inputTokens + cachedInputTokens + outputTokens + reasoningOutputTokens + toolTokens;
@@ -1720,8 +1752,10 @@ function geminiUsageFrom(input: unknown): AgentTokenUsage | undefined {
   return {
     inputTokens,
     cachedInputTokens,
+    ...(cachedInputTokens > 0 ? { cacheReadInputTokens: cachedInputTokens } : {}),
     outputTokens: outputTokens + toolTokens,
     ...(reasoningOutputTokens > 0 ? { reasoningOutputTokens } : {}),
+    ...(actualCostUsd !== undefined ? { actualCostUsd, costSource: "actual" as const } : {}),
     totalTokens,
   };
 }
@@ -1729,11 +1763,26 @@ function geminiUsageFrom(input: unknown): AgentTokenUsage | undefined {
 function addUsage(a: AgentTokenUsage, b: AgentTokenUsage): AgentTokenUsage {
   const reasoning =
     (a.reasoningOutputTokens ?? 0) + (b.reasoningOutputTokens ?? 0);
+  const cacheCreation =
+    (a.cacheCreationInputTokens ?? 0) + (b.cacheCreationInputTokens ?? 0);
+  const cacheRead =
+    (a.cacheReadInputTokens ?? 0) + (b.cacheReadInputTokens ?? 0);
+  const actualCostUsd =
+    a.totalTokens <= 0 && b.actualCostUsd !== undefined
+      ? b.actualCostUsd
+      : b.totalTokens <= 0 && a.actualCostUsd !== undefined
+        ? a.actualCostUsd
+        : a.actualCostUsd !== undefined && b.actualCostUsd !== undefined
+          ? a.actualCostUsd + b.actualCostUsd
+          : undefined;
   return {
     inputTokens: a.inputTokens + b.inputTokens,
     cachedInputTokens: a.cachedInputTokens + b.cachedInputTokens,
+    ...(cacheCreation > 0 ? { cacheCreationInputTokens: cacheCreation } : {}),
+    ...(cacheRead > 0 ? { cacheReadInputTokens: cacheRead } : {}),
     outputTokens: a.outputTokens + b.outputTokens,
     ...(reasoning > 0 ? { reasoningOutputTokens: reasoning } : {}),
+    ...(actualCostUsd !== undefined ? { actualCostUsd, costSource: "actual" as const } : {}),
     totalTokens: a.totalTokens + b.totalTokens,
   };
 }
@@ -1839,7 +1888,7 @@ function claudeTokenRunsFromRecords(records: Record<string, unknown>[]) {
 
   for (const record of records) {
     const message = record.message as Record<string, unknown> | undefined;
-    const usage = claudeUsageFrom(message?.usage);
+    const usage = claudeUsageFrom(message?.usage, record);
     if (!usage) continue;
 
     const timestamp = Date.parse(`${record.timestamp ?? ""}`);
@@ -1972,7 +2021,7 @@ function tokenTelemetryFromRecords(
   const byRequest = new Map<string, { timestamp?: string; usage: AgentTokenUsage }>();
   for (const record of records) {
     const message = record.message as Record<string, unknown> | undefined;
-    const usage = claudeUsageFrom(message?.usage);
+    const usage = claudeUsageFrom(message?.usage, record);
     if (!usage) continue;
     const timestamp = Date.parse(`${record.timestamp ?? ""}`);
     const key =
