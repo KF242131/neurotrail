@@ -1,0 +1,65 @@
+# NeuroTrail PR review (example)
+#
+# NeuroTrail is local-first: the agent transcripts it reads live on the
+# developer's machine (~/.claude, ~/.codex, ...), NOT on a hosted CI runner.
+# So this workflow only produces a review when the runner can actually see those
+# logs, e.g.:
+#   • a self-hosted runner that has the agent's logs, or
+#   • the agent ran inside this job (agent-in-CI), or
+#   • a NeuroTrail session was committed/uploaded under .neurotrail/sessions.
+#
+# On a normal hosted runner there are no sessions, so the job SKIPS cleanly
+# (it does not fail). For the common local case, just run this on your machine:
+#
+#     neurotrail review --comment      # auto-detects the current branch's PR
+#
+# Requires the package to be published to npm (npx neurotrail).
+
+name: NeuroTrail review
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Generate and post NeuroTrail trust report
+        id: nt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Skip cleanly when no agent sessions are visible (expected on hosted runners).
+          if ! npx -y neurotrail@latest sessions 2>/dev/null \
+              | grep -qE '^(codex|claude|gemini|cursor|cline|roo|unknown)[[:space:]]'; then
+            echo "No agent sessions visible on this runner — skipping. See workflow notes."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BASE_ARG="main"
+          if [ -n "${BASE_REF:-}" ]; then BASE_ARG="origin/${BASE_REF}"; fi
+          npx -y neurotrail@latest review \
+            --base "$BASE_ARG" \
+            --comment "${PR_NUMBER:-}" \
+            --json
+      - name: Upload replay artifact
+        if: steps.nt.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurotrail-replay
+          path: .neurotrail/reports/latest.html
+          if-no-files-found: ignore

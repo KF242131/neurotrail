@@ -1,34 +1,106 @@
+<div align="center">
+
+<img src="docs/neurotrail-logo.png" width="96" alt="NeuroTrail" />
+
 # NeuroTrail
 
-> **Asciinema for AI coding agents.** Replay and share what your agent actually did as a living map of your codebase.
+**See what your AI agent actually did — and whether to trust it.**
 
-NeuroTrail turns local AI coding-session logs into an interactive replay. It
-reads supported agent transcripts from your machine, normalizes the steps into a
-timeline, and renders the run as a neural graph: agents, files, commands, edits,
-and verification steps connected by animated signals.
+The review layer for agent-written code. Local-first. Cross-agent. Zero instrumentation.
 
-It is built for the two questions engineers ask after an agent run:
+<!-- Replace OWNER/REPO with your GitHub path once the repo is pushed. -->
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+&nbsp;[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-- **What happened?** Scrub through the exact path the agent took across files,
-  commands, edits, and decisions.
-- **What should the next agent know?** Export a handoff packet with touched
-  files, dead trails, verification notes, token usage, and a next-session prompt.
+</div>
 
-NeuroTrail is local-first. It does not start Codex, Claude, Cursor, or any other
-agent, and it does not send session data to a remote service.
+---
+
+In 2026 a growing share of pull requests are written by AI agents. Reviewers get
+the **diff** — but the diff doesn't tell you *how* the agent got there: what it
+explored and abandoned, what it re-read six times, whether it actually ran the
+tests, or where it thrashed. **Everyone reviews the output. Nobody reviews the
+process — and trust lives in the process.**
+
+NeuroTrail reconstructs an agent's run from the logs it already writes to your
+disk (Claude Code, Codex, Gemini, Cursor, Cline, Roo) and turns it into two
+things you can hand to a reviewer or the next agent:
+
+- **A trust summary** — the defensible facts (files changed, commands run, real
+  test pass/fail, cost) followed by confidence-banded *attention flags*, each
+  deep-linked to the exact moment in the replay so a human can verify it.
+- **A self-contained replay** — a single HTML file that animates the run as a
+  neural graph with a video scrubber. No server, opens anywhere, attach it to a PR.
+
+It does **not** start or drive any agent, and it sends **nothing** to the cloud.
+
+## Why this is different
+
+Tools like `ccusage` and `agenttrace` already measure agent cost and waste in
+your terminal — and they're good at it. NeuroTrail is not another usage meter.
+It's the **visual, shareable, PR-attached** layer those tools structurally
+can't be: it answers *"what did this agent do, and should I trust this change?"*
+for a **human reviewer**, with the replay as the evidence.
 
 ## Status
 
-`v0.1.0-alpha.0` is a clone-first alpha. The live viewer and report exporter are
-usable today, but the zero-install `npx neurotrail` workflow is still on the
-roadmap.
+`v0.1.0-alpha`. The `review` / `report` / `sessions` CLI is pure-Node and ships
+ready for the zero-install `npx neurotrail` workflow once published to npm. Until
+then, run it from a clone with `node bin/neurotrail.mjs review`. The live viewer
+(`watch`) needs a clone plus `npm install`.
 
 ## Quickstart
 
-Requirements:
+Requirements: Node.js 20+, and a local AI coding session for this workspace (or
+the built-in sample replay).
 
-- Node.js 20+
-- A local AI coding session for this workspace, or the built-in demo data
+Generate a trust report for the latest agent session in the current repo — no
+clone, no install (once published):
+
+```bash
+npx neurotrail review
+# from a clone today:
+node bin/neurotrail.mjs review
+```
+
+This writes:
+
+- `.neurotrail/review/latest.md` — the trust summary (paste into a PR comment)
+- `.neurotrail/reports/latest.html` — the self-contained interactive replay
+
+Open the HTML in any browser. Click any **attention flag** to jump the replay to
+that exact moment.
+
+### What the trust summary looks like
+
+```markdown
+# NeuroTrail trust summary — Claude wrote this change
+
+> Reviewing the process, not just the diff — reconstructed from local agent logs.
+
+## What the agent did
+- Files changed: 6 — App.tsx, costModel.ts, trustSummary.js +3 more
+- Commands run: 11
+- Tests: ran and passed
+- Est. cost: $0.42 · 312k tokens
+- Steps: 84 · Duration: 7:41
+
+## Attention flags (heuristic — for human review)
+- Edited one file many times with no passing checkpoint · 66% · `costModel.ts` · 4× · first at 3:12 in the replay
+- Read a file that did not inform any later edit · 58% · `legacy/auth.ts` · at 1:05 in the replay
+
+_Attention flags are heuristic signals for human review, not defects. Open the
+replay to verify each one._
+```
+
+The numbers above the line are facts pulled straight from the transcript
+(provider-reported cost when available, observed test results). The flags below
+are heuristics — NeuroTrail surfaces the evidence and links it; **you** make the
+call.
+
+## The live viewer
+
+For watching a run unfold in real time, clone the repo and run the dev viewer:
 
 ```bash
 git clone <repo-url>
@@ -37,137 +109,127 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` while an agent session is running in the same
-workspace. NeuroTrail will detect recent supported sessions and merge them into
-one live graph. Press `c` in the app for cinematic mode.
-
-## Export a shareable replay
-
-```bash
-node bin/neurotrail.mjs sessions
-node bin/neurotrail.mjs report --target codex --redact
-```
-
-The report command writes:
-
-- `.neurotrail/reports/latest.html` - self-contained interactive replay
-- `.neurotrail/handoff/latest.md` - copy-paste handoff for the next agent
-
-Open the HTML file in any browser. No server is required. The replay includes a
-video-style scrubber, run summary, token/cost estimate, waste estimate, handoff
-packet, and a Record button for capturing the animation as `.webm`.
+Open `http://localhost:5173`. With no active session it plays a **sample agent
+PR replay**; the moment a supported agent starts working in the same workspace,
+it upgrades to the live run. Press `c` for cinematic mode.
 
 ## CLI
 
-From a clone, use `node bin/neurotrail.mjs ...`.
-
 ```bash
-node bin/neurotrail.mjs sessions
-node bin/neurotrail.mjs report
-node bin/neurotrail.mjs report --target claude
-node bin/neurotrail.mjs report --redact
-node bin/neurotrail.mjs watch --port 5174 --no-open
+npx neurotrail review                 # trust report for the latest session
+npx neurotrail review --base main     # scope changed files to this branch vs main
+npx neurotrail review --json          # machine-readable output (CI / scripting)
+npx neurotrail review --comment 123   # post the trust summary to PR #123 (via gh)
+npx neurotrail report                 # next-agent handoff packet + replay
+npx neurotrail sessions               # list local agent sessions for this workspace
+neurotrail watch                      # live dev viewer (requires a clone + npm install)
 ```
-
-If you want the `neurotrail` command locally while developing:
-
-```bash
-npm link
-neurotrail sessions
-```
-
-Commands:
 
 | Command | What it does |
 | --- | --- |
-| `sessions` | Lists recent supported local agent sessions for the current workspace. |
-| `report` | Exports the latest replay HTML and handoff markdown. |
-| `watch` | Starts the local Vite viewer for the current workspace. Requires dev dependencies. |
-
-Options:
+| `review` | Trust report for a reviewer: replay HTML + `review/latest.md`. Redacts by default. |
+| `report` | Next-agent handoff: replay HTML + `handoff/latest.md`. |
+| `sessions` | Lists recent supported local agent sessions for this workspace. |
+| `watch` | Starts the live viewer. Requires a clone with dev dependencies. |
 
 | Option | Applies to | Description |
 | --- | --- | --- |
+| `--base <ref>` | `review` | Git base to diff for the changed-files list. Default `main`. |
+| `--json` | `review` | Print machine-readable JSON (facts, flags, artifact paths). |
+| `--comment <pr>` | `review` | Post the trust summary to a GitHub PR via the `gh` CLI. |
+| `--fail-on-flags <n>` | `review` | Exit 1 if any attention flag's confidence ≥ `n` (0–1). For CI gates. |
+| `--no-redact` | `review` | Disable redaction (on by default for shared artifacts). |
 | `--target codex\|claude\|cursor` | `report` | Tailors the handoff instruction for the next agent. |
-| `--redact` | `report` | Applies basic masking for secrets, emails, home paths, and long tokens. |
-| `--port <number>` | `watch` | Runs the viewer on a custom port. |
-| `--no-open` | `watch` | Prints the URL without opening a browser. |
+| `--redact` | `report` | Apply basic redaction to the exported report and handoff. |
 
-## Supported Sources
+### Posting a review to a PR
 
-NeuroTrail currently reads local transcript formats from:
+Because NeuroTrail is local-first, the agent transcripts live on your machine,
+not on CI — so the simplest flow runs where the logs are (your laptop):
+
+```bash
+neurotrail review --comment        # auto-detects the current branch's PR (needs gh)
+neurotrail review --comment 123    # or target a PR explicitly
+```
+
+This posts the trust summary as a PR comment. For teams that run agents in CI or
+on self-hosted runners (where the logs are present), the example workflow at
+[`.github/workflows/neurotrail-review.yml`](.github/workflows/neurotrail-review.yml)
+does the same automatically and uploads the replay HTML as a build artifact — and
+skips cleanly on hosted runners that can't see local logs.
+
+## Supported sources
+
+NeuroTrail reads local transcript formats from:
 
 | Agent/source | Notes |
 | --- | --- |
-| Codex | Reads session logs under `~/.codex/sessions`. |
-| Claude Code | Reads project transcripts under `~/.claude/projects`. |
+| Codex | Reads session logs under `~/.codex/sessions`. Full token/cost + tool results. |
+| Claude Code | Reads project transcripts under `~/.claude/projects`. Full token/cost + tool results. |
 | Gemini | Reads recent local Gemini chat and artifact records where available. |
 | Cursor | Reads recent Cursor agent transcripts for this workspace. |
 | Cline | Reads recent Cline task transcripts from VS Code/Cursor storage or local `.cline`. |
 | Roo Code | Reads recent Roo task transcripts from VS Code/Cursor storage or local `.roo`. |
 | Generic JSONL | Reads workspace-local `.agent`, `.agents`, `.ai`, and `.neurotrail/sessions` records. |
 
-Session discovery is workspace-aware where the source exposes enough metadata.
-When metadata is missing, NeuroTrail looks for recent transcripts that reference
-the current workspace path.
+## Privacy and redaction
 
-## What a Replay Shows
+NeuroTrail reads local files and writes local outputs only. `review` redacts by
+default (pass `--no-redact` to disable); `report` redacts with `--redact`.
+Redaction masks bearer tokens, GitHub/Slack-style tokens, emails, home paths,
+and long secret-like strings.
 
-- Animated agent/file graph with signals for reads, edits, commands, tests, and
-  written reasoning.
-- Timeline scrubber with play, pause, seek, and speed controls.
-- Run summary with steps, files touched, estimated token usage, estimated cost,
-  and waste percentage.
-- Handoff packet with recommended next files and a prompt for the next session.
-- Dead trails: files inspected by the agent that were not later edited.
+Redaction is best-effort. **Review exported HTML and markdown before posting a
+replay from a private repository.**
 
-## Privacy and Redaction
+## How it works
 
-NeuroTrail reads local files and writes local outputs only. Report export can
-mask common sensitive values with `--redact`, including bearer tokens, GitHub and
-Slack-style tokens, email addresses, home paths, and long secret-like strings.
-
-Redaction is best-effort. Review exported HTML and markdown before publishing a
-replay from a private repository or sensitive agent session.
-
-## Local Development
-
-```bash
-npm install
-npm run dev
-npm run build
-npm run lint
-```
+1. Discover the most recent supported session(s) for the current workspace.
+2. Normalize tool calls, edits, commands, and tool *results* into a timeline,
+   correlating each command with its observed pass/fail.
+3. Classify per-step "attention" signals (`src/lib/wasteCore.js`) and render the
+   reviewer trust summary (`src/lib/trustSummary.js`).
+4. Emit a self-contained replay (`src/replay/replayDocument.js`).
 
 Useful paths:
 
 | Path | Purpose |
 | --- | --- |
-| `src/App.tsx` | Main live viewer shell. |
-| `src/components/` | Graph, timeline, controls, and panels. |
-| `src/lib/` | Session normalization, cost model, redaction, and graph helpers. |
-| `server/` | Live graph endpoints used by the Vite dev server. |
-| `bin/neurotrail.mjs` | CLI entrypoint for `sessions`, `report`, and `watch`. |
-| `src/replay/` | Self-contained replay document builder. |
+| `bin/neurotrail.mjs` | CLI: `review`, `report`, `sessions`, `watch`. |
+| `src/lib/trustSummary.js` | Shared reviewer trust-summary renderer. |
+| `src/lib/wasteCore.js` | Shared per-step attention/waste classifier. |
+| `src/replay/replayDocument.js` | Self-contained replay document builder. |
+| `server/` | Live graph endpoints used by the dev viewer. |
+| `src/App.tsx` | Live viewer shell. |
+
+```bash
+npm install
+npm run dev      # live viewer
+npm run build    # tsc -b && vite build
+npm run lint
+npm run test
+```
 
 ## Limitations
 
-- Cost estimates are approximate and depend on token usage fields available in
-  the source transcript.
-- `report` needs at least one supported session associated with the current
-  workspace.
-- `watch` currently expects a clone with installed dependencies.
+- **Attention flags are heuristics, not verdicts.** They are confidence-banded
+  and calibrated against a small fixture set; the replay is the evidence and the
+  human reviewer decides. Cost and observed test results are the defensible
+  numbers — lead with those.
+- Cost is exact when the provider reports it in the transcript, otherwise an
+  estimate from token counts.
+- `--base` file scoping needs a git repo; outside one it falls back to files
+  inferred from the session log.
 - Generic transcript support is intentionally conservative and may miss custom
   agent formats until an adapter is added.
 
 ## Roadmap
 
-- Published zero-install `npx neurotrail` workflow
-- GIF export in addition to interactive HTML and `.webm` recording
-- Stronger redaction policies and review presets
-- Deeper adapters for Windsurf, OpenHands, and other coding agents
-- Sample replay gallery
-- Static-analysis project graph enrichment
+- Publish to npm so `npx neurotrail` runs without a clone (the CLI is already pure-Node)
+- Hosted replay links with shareable `#t=` deep-links
+- Larger labeled eval set + confidence calibration; optional LLM audit
+- Cross-run history ("this agent's flag rate over time")
+- Deeper adapters for Windsurf, OpenHands, and more
 
 ## License
 

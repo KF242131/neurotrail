@@ -1,16 +1,31 @@
 {
   "name": "neurotrail",
   "version": "0.1.0-alpha.0",
-  "description": "Asciinema for AI coding agents — replay and share what your AI agent actually did.",
+  "description": "See what your AI coding agent actually did — and whether to trust it. A local-first, cross-agent replay + trust report you attach to a PR. Review the process, not just the diff.",
   "type": "module",
   "private": false,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/REPO.git"
+  },
+  "homepage": "https://github.com/OWNER/REPO#readme",
+  "bugs": {
+    "url": "https://github.com/OWNER/REPO/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "ai",
     "coding-agent",
+    "code-review",
+    "agent-trust",
+    "ai-code-review",
+    "pr-review",
+    "agent-observability",
     "flight-recorder",
-    "handoff",
-    "pr-review"
+    "handoff"
   ],
   "engines": {
     "node": ">=20"
@@ -20,25 +35,25 @@
   },
   "files": [
     "bin",
-    "dist",
-    "server",
-    "src",
-    "index.html",
-    "vite.config.ts",
-    "README.md"
+    "src/lib/wasteCore.js",
+    "src/lib/wasteCore.d.ts",
+    "src/lib/trustSummary.js",
+    "src/lib/trustSummary.d.ts",
+    "src/lib/agentRegistry.js",
+    "src/lib/agentRegistry.d.ts",
+    "src/replay/replayDocument.js",
+    "src/replay/replayDocument.d.ts",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@xyflow/react": "^12.10.2",
-    "framer-motion": "^12.40.0",
-    "lucide-react": "^1.16.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "test": "vitest run",
+    "eval:waste": "vitest run eval",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -46,15 +61,21 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "@xyflow/react": "^12.10.2",
     "autoprefixer": "^10.5.0",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "framer-motion": "^12.40.0",
     "globals": "^17.6.0",
+    "lucide-react": "^1.16.0",
     "postcss": "^8.5.15",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "tailwindcss": "^3.4.19",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^4.1.7"
   }
 }
