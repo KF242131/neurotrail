@@ -8,9 +8,15 @@
 
 The review layer for agent-written code. Local-first. Cross-agent. Zero instrumentation.
 
-<!-- Replace OWNER/REPO with your GitHub path once the repo is pushed. -->
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/neurotrail?color=cb3837&logo=npm)](https://www.npmjs.com/package/neurotrail)
+&nbsp;[![CI](https://github.com/KF242131/neurotrail/actions/workflows/ci.yml/badge.svg)](https://github.com/KF242131/neurotrail/actions/workflows/ci.yml)
 &nbsp;[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+<br/>
+
+<img src="docs/hero.gif" alt="Claude, Codex and Gemini collaborating on one pull request, replayed as a color-coded neural graph" width="820" />
+
+<sub>Three AI agents — Claude, Codex, Gemini — shipping one PR. <code>npx neurotrail review</code> turns any agent session into a replay like this.</sub>
 
 </div>
 
@@ -103,7 +109,7 @@ call.
 For watching a run unfold in real time, clone the repo and run the dev viewer:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/KF242131/neurotrail.git
 cd NeuroTrail
 npm install
 npm run dev

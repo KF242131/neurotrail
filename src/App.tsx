@@ -15,9 +15,13 @@ import {
   buildLocalProjectGraph,
   type ProjectGraph,
 } from "./lib/localProjectGraph";
-import { demoNodes, demoEdges } from "./data/demoGraph";
-import { demoSignals, TOTAL_DURATION } from "./data/demoSignals";
-import { getAgentTelemetry } from "./data/demoAgents";
+import {
+  demoNodes,
+  demoEdges,
+  demoSignals,
+  TOTAL_DURATION,
+  getAgentTelemetry,
+} from "./data/demo";
 import { fetchLiveAgentGraph } from "./lib/claudeLive";
 import { AGENT_ROLES, ROLE_LABELS, inferAgentRole, roleColor } from "./lib/agentRoles";
 import {

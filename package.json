@@ -7,11 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/REPO.git"
+    "url": "git+https://github.com/KF242131/neurotrail.git"
   },
-  "homepage": "https://github.com/OWNER/REPO#readme",
+  "homepage": "https://github.com/KF242131/neurotrail#readme",
   "bugs": {
-    "url": "https://github.com/OWNER/REPO/issues"
+    "url": "https://github.com/KF242131/neurotrail/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -53,6 +53,7 @@
     "test": "vitest run",
     "eval:waste": "vitest run eval",
     "preview": "vite preview",
+    "demo:capture": "node scripts/capture-demo.mjs",
     "prepublishOnly": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
